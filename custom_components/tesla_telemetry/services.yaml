@@ -1,0 +1,122 @@
+---
+bootstrap:
+  name: Bootstrap (one-time onboarding)
+  description: >
+    Registers the partner domain with Tesla (if requested) and pushes the
+    initial fleet telemetry config so the configured vehicle starts
+    streaming. Run once after first install — afterwards, use
+    `resync_telemetry_config` to refresh the config's `exp` field.
+  fields:
+    entry_id:
+      name: Config entry
+      description: Which tesla_telemetry entry to act on. Required only when more than one is configured.
+      required: false
+      selector:
+        config_entry:
+          integration: tesla_telemetry
+    register_partner_domain:
+      name: Register partner domain
+      description: >
+        Set to false if the partner app is already registered through
+        another integration (e.g. tesla_fleet) and you only need to push
+        the telemetry config.
+      required: false
+      default: true
+      selector:
+        boolean:
+    ca_pem:
+      name: CA bundle override (PEM)
+      description: >
+        Override the default Let's Encrypt root bundle used as the
+        vehicle's TLS trust anchor. Only set this if your hostname uses
+        a non-LE CA.
+      required: false
+      selector:
+        text:
+          multiline: true
+
+resync_telemetry_config:
+  name: Re-push telemetry config
+  description: >
+    Pushes the current `fleet_telemetry_config` again. The config's `exp`
+    field is ~30 days; call this weekly via an HA automation so nothing
+    lapses.
+  fields:
+    entry_id:
+      name: Config entry
+      required: false
+      selector:
+        config_entry:
+          integration: tesla_telemetry
+    ca_pem:
+      name: CA bundle override (PEM)
+      required: false
+      selector:
+        text:
+          multiline: true
+
+get_telemetry_config:
+  name: Show current telemetry config
+  description: >
+    Calls Tesla's `GET /api/1/vehicles/{vin}/fleet_telemetry_config` and
+    returns the response. Use this to check whether the vehicle has
+    actually synced the config you pushed via `bootstrap`/`resync` —
+    look for `synced: true` in the response.
+  fields:
+    entry_id:
+      name: Config entry
+      required: false
+      selector:
+        config_entry:
+          integration: tesla_telemetry
+
+dump_public_key:
+  name: Show partner public key
+  description: >
+    Returns the EC P-256 public key derived from the configured private
+    key, ready to host at the partner domain's
+    `.well-known/appspecific/com.tesla.3p.public-key.pem` path. Returned
+    via the service response and also written to the HA log.
+  fields:
+    entry_id:
+      name: Config entry
+      required: false
+      selector:
+        config_entry:
+          integration: tesla_telemetry
+
+set_interval_preset:
+  name: Set telemetry interval preset
+  description: >
+    Switch the per-field telemetry intervals to a named preset and re-push
+    the fleet_telemetry_config so the change takes effect.
+
+    `default` is the steady-state config (5 s ceiling on Location/speed,
+    higher ceilings on slower-moving signals — Tesla still pushes on
+    change, the interval is just the maximum frequency).
+
+    `high_rate` drops Location/VehicleSpeed/Gear and the live charging
+    power signals to ~1 s for live-trace style use.  Switch back to
+    `default` afterwards — the preset is persisted to entry storage so it
+    survives a HA restart.
+  fields:
+    entry_id:
+      name: Config entry
+      required: false
+      selector:
+        config_entry:
+          integration: tesla_telemetry
+    preset:
+      name: Preset
+      required: true
+      selector:
+        select:
+          options:
+            - default
+            - high_rate
+    ca_pem:
+      name: CA bundle override (PEM)
+      required: false
+      selector:
+        text:
+          multiline: true

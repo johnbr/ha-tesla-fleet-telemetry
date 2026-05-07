@@ -1,0 +1,56 @@
+// FlatBuffers schema for the Tesla Fleet Telemetry wire envelope.
+//
+// Reconstructed from the generated Go bindings at
+//   teslamotors/fleet-telemetry @ 20df968d7a09e8ec4e8b0175e0cc1a6153c34b2e
+//   messages/tesla/Flatbuffers{Envelope,Stream,StreamAck,Message}.go
+// Tesla does not publish the original .fbs source. Vtable offsets, field
+// types, and union enum IDs in this file match the generated Go output
+// exactly. See proto/README.md for the regen procedure.
+
+namespace tesla;
+
+// FbReserved1..3 occupy union IDs 1, 2, 3 so that FlatbuffersStream
+// resolves to ID 4 and FlatbuffersStreamAck resolves to ID 5, matching
+// the Go enum:
+//   MessageNONE                 = 0
+//   MessageFlatbuffersStream    = 4
+//   MessageFlatbuffersStreamAck = 5
+table FbReserved1 {}
+table FbReserved2 {}
+table FbReserved3 {}
+
+// Vehicle-to-server payload carrier. Inner `payload` is a serialized
+// Protobuf whose type is determined by the envelope `topic` ("V" for
+// vehicle data, "alerts", "errors", etc.).
+table FlatbuffersStream {
+  created_at:uint32;            // slot 0 -> vtable offset 4
+  sender_id:[ubyte];            // slot 1 -> vtable offset 6  (DEPRECATED: derived from cert)
+  payload:[ubyte];              // slot 2 -> vtable offset 8  (inner protobuf bytes)
+  device_type:[ubyte];          // slot 3 -> vtable offset 10 (cert issuer CN)
+  device_id:[ubyte];            // slot 4 -> vtable offset 12 (cert subject CN, e.g. VIN)
+  delivered_at_epoch_ms:uint64; // slot 5 -> vtable offset 14 (server-stamped)
+}
+
+// Server-to-vehicle ack body. Empty by design — the txid/topic that
+// identify which message is being acked live in the enclosing envelope.
+table FlatbuffersStreamAck {}
+
+union Message {
+  FbReserved1,        // = 1
+  FbReserved2,        // = 2
+  FbReserved3,        // = 3
+  FlatbuffersStream,  // = 4
+  FlatbuffersStreamAck // = 5
+}
+
+// Outer envelope used in BOTH directions. Server replies with the same
+// txid + topic the vehicle sent, switching message_type to
+// FlatbuffersStreamAck.
+table FlatbuffersEnvelope {
+  txid:[ubyte];        // slot 0 -> vtable offset 4
+  topic:[ubyte];       // slot 1 -> vtable offset 6
+  message:Message;     // slots 2 & 3 -> offsets 8 (type byte) + 10 (table offset)
+  message_id:[ubyte];  // slot 4 -> vtable offset 12
+}
+
+root_type FlatbuffersEnvelope;

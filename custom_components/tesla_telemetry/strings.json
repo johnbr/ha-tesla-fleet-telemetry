@@ -1,0 +1,52 @@
+{
+  "config": {
+    "step": {
+      "pick_implementation": {
+        "title": "Pick the Tesla developer-app credential set",
+        "description": "Choose existing application credentials or add new ones. Add the same client_id / client_secret you registered for `tesla_fleet` — each integration goes through OAuth independently and gets its own refresh token, so they no longer rotate over each other."
+      },
+      "auth": {
+        "title": "Authorize with Tesla"
+      },
+      "vehicle": {
+        "title": "Pick the Roadrunner",
+        "description": "Choose the VIN this integration should track.",
+        "data": {
+          "vin": "Vehicle"
+        }
+      },
+      "endpoint": {
+        "title": "Telemetry endpoint",
+        "description": "Configure how Tesla reaches Home Assistant. The hostname must resolve publicly and present a TLS cert valid for the chain you'll put in `fleet_telemetry_config.ca`. The proxy secret is what nginx will inject as `X-Tesla-Proxy-Secret` on every forwarded request — copy it into your nginx config.\n\nThe partner private key is the EC P-256 (secp256r1) key whose public counterpart is hosted at `https://<partner-domain>/.well-known/appspecific/com.tesla.3p.public-key.pem`. If you don't have one yet, generate it with `openssl ecparam -genkey -name prime256v1 -noout -out partner.key` and paste the file contents below.",
+        "data": {
+          "hostname": "Public hostname (e.g. tesla-telemetry.example.com)",
+          "port": "Port",
+          "partner_domain": "Partner domain (where .well-known is hosted)",
+          "proxy_secret": "Proxy shared secret",
+          "private_key_pem": "Partner private key (PEM)"
+        }
+      }
+    },
+    "error": {
+      "vin_not_found": "That VIN is not on this account.",
+      "bad_key": "Could not parse the private key. It must be a PEM-encoded private key.",
+      "wrong_curve": "The key must be EC P-256 (curve secp256r1)."
+    },
+    "abort": {
+      "already_configured": "This vehicle is already configured.",
+      "missing_credentials": "No application credentials configured. Add them via Settings → Devices & Services → Application Credentials.",
+      "missing_configuration": "Application credentials are missing. Add them and try again.",
+      "no_url_available": "No URL available for the OAuth callback. Configure an external URL or my.home-assistant.io.",
+      "user_rejected_authorize": "User rejected the authorize request.",
+      "authorize_url_timeout": "Timed out generating the authorize URL.",
+      "authorize_url_fail": "Could not generate the authorize URL.",
+      "oauth_error": "Tesla returned an OAuth error.",
+      "oauth_failed": "Could not complete the OAuth flow.",
+      "oauth_timeout": "Timed out completing the OAuth flow.",
+      "oauth_unauthorized": "Tesla rejected the OAuth flow — the developer app may not be approved for the requested scopes.",
+      "oauth_unknown_error": "Unknown OAuth error.",
+      "no_vehicles": "Tesla returned no vehicles for this account.",
+      "cannot_connect": "Could not reach Tesla. Check network connectivity and try again."
+    }
+  }
+}
