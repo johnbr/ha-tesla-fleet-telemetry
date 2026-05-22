@@ -1,7 +1,7 @@
 {
   "domain": "tesla_telemetry",
   "name": "Tesla Fleet Telemetry",
-  "codeowners": ["@prowlah"],
+  "codeowners": ["@johnbr"],
   "config_flow": true,
   "dependencies": ["application_credentials", "http"],
   "documentation": "https://github.com/johnbr/ha-tesla-fleet-telemetry",
