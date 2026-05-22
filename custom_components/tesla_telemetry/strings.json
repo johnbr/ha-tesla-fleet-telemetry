@@ -17,7 +17,7 @@
       },
       "endpoint": {
         "title": "Telemetry endpoint",
-        "description": "Configure how Tesla reaches Home Assistant. The hostname must resolve publicly and present a TLS cert valid for the chain you'll put in `fleet_telemetry_config.ca`. The proxy secret is what nginx will inject as `X-Tesla-Proxy-Secret` on every forwarded request — copy it into your nginx config.\n\nThe partner private key is the EC P-256 (secp256r1) key whose public counterpart is hosted at `https://<partner-domain>/.well-known/appspecific/com.tesla.3p.public-key.pem`. If you don't have one yet, generate it with `openssl ecparam -genkey -name prime256v1 -noout -out partner.key` and paste the file contents below.\n\nWhen adding another vehicle these fields are pre-filled from your existing setup — leave them unchanged unless your deployment moved.",
+        "description": "Configure how Tesla reaches Home Assistant. The hostname must resolve publicly and present a TLS cert valid for the chain you'll put in `fleet_telemetry_config.ca`. The proxy secret is what nginx will inject as `X-Tesla-Proxy-Secret` on every forwarded request — copy it into your nginx config.\n\nThe partner private key is the EC P-256 (secp256r1) key whose public counterpart is hosted at `https://your-partner-domain/.well-known/appspecific/com.tesla.3p.public-key.pem`. If you don't have one yet, generate it with `openssl ecparam -genkey -name prime256v1 -noout -out partner.key` and paste the file contents below.\n\nWhen adding another vehicle these fields are pre-filled from your existing setup — leave them unchanged unless your deployment moved.",
         "data": {
           "hostname": "Public hostname (e.g. tesla-telemetry.example.com)",
           "port": "Port",
