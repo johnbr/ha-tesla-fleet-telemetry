@@ -1,0 +1,74 @@
+name: Bug report
+description: Report a problem with the Tesla Fleet Telemetry integration
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a report. This integration has a multi-part setup
+        (an nginx mTLS front end plus a Tesla partner account), so please
+        include the details below — they make a problem diagnosable without
+        a long back-and-forth.
+  - type: input
+    id: integration_version
+    attributes:
+      label: Integration version
+      description: From HACS, or the `version` field in `manifest.json`.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: "2025.x.x"
+    validations:
+      required: true
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened
+      description: What you expected to happen, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Home Assistant logs
+      description: >
+        Relevant lines from Settings → System → Logs (or `home-assistant.log`).
+        Enable debug logging for `custom_components.tesla_telemetry` first if
+        you can.
+      render: text
+  - type: textarea
+    id: telemetry_config
+    attributes:
+      label: get_telemetry_config output
+      description: >
+        Run the `tesla_telemetry.get_telemetry_config` service and paste the
+        response. Redact your VIN if you prefer.
+      render: json
+  - type: textarea
+    id: nginx
+    attributes:
+      label: nginx access / error log
+      description: >
+        If the vehicle is not connecting, the nginx logs for the telemetry
+        vhost are the most useful evidence — look for `Hermes/...` user agents
+        in the access log and TLS handshake failures in the error log.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have read the README setup section.
+          required: true
+        - label: I have searched existing issues for this problem.
+          required: true
