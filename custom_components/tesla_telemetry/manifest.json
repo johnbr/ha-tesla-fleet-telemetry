@@ -1,10 +1,11 @@
 {
   "domain": "tesla_telemetry",
   "name": "Tesla Fleet Telemetry",
-  "codeowners": ["@prowlah"],
+  "codeowners": ["@johnbr"],
   "config_flow": true,
   "dependencies": ["application_credentials", "http"],
   "documentation": "https://github.com/johnbr/ha-tesla-fleet-telemetry",
+  "integration_type": "device",
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/johnbr/ha-tesla-fleet-telemetry/issues",
   "requirements": ["cryptography>=42", "protobuf>=4.25,<8", "flatbuffers>=24"],

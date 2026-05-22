@@ -12,10 +12,13 @@ Uses HA's standard OAuth2 framework via ``application_credentials``:
      Tesla's `/api/1/vehicles` response and against ``async_set_unique_id``
      to prevent duplicate entries.
   4. ``endpoint`` — public hostname, port, partner domain, proxy shared
-     secret, and the partner EC P-256 private key (PEM).
+     secret, and the partner EC P-256 private key (PEM). These are
+     deployment-wide; when adding a second vehicle the step is pre-filled
+     from an existing entry.
 
 Each integration goes through OAuth independently and gets its own
 refresh-token chain from Tesla — no more rotation race with tesla_fleet.
+One config entry is created per vehicle (VIN), each its own HA device.
 """
 from __future__ import annotations
 
@@ -37,6 +40,7 @@ from .const import (
     CONF_PRIVATE_KEY_PEM,
     CONF_PROXY_SECRET,
     CONF_REGION,
+    CONF_VEHICLE_NAME,
     CONF_VIN,
     DEFAULT_REGION,
     DOMAIN,
@@ -157,14 +161,17 @@ class TeslaTelemetryOAuth2FlowHandler(
                     (v for v in self._vehicles if v.get("vin") == self._chosen_vin),
                     {},
                 )
-                title = vehicle.get("display_name") or "Roadrunner"
-                title = f"{title} ({self._chosen_vin})"
+                # Falls back to the VIN when the vehicle has no display
+                # name; this becomes the HA device name for the vehicle.
+                vehicle_name = vehicle.get("display_name") or self._chosen_vin
+                title = f"{vehicle_name} ({self._chosen_vin})"
                 # ``self._oauth_data`` already holds ``auth_implementation``
                 # (which application_credential to use) and ``token`` (the
                 # OAuth tokens). HA's OAuth2Session reads both at runtime.
                 data = {
                     **self._oauth_data,
                     CONF_VIN: self._chosen_vin,
+                    CONF_VEHICLE_NAME: vehicle_name,
                     CONF_REGION: self._region,
                     CONF_HOSTNAME: user_input[CONF_HOSTNAME].strip(),
                     CONF_PORT: int(user_input[CONF_PORT]),
@@ -173,6 +180,16 @@ class TeslaTelemetryOAuth2FlowHandler(
                     CONF_PRIVATE_KEY_PEM: user_input[CONF_PRIVATE_KEY_PEM],
                 }
                 return self.async_create_entry(title=title, data=data)
+
+        # The endpoint is deployment-wide — same nginx, same partner key —
+        # so when the user adds a second (or later) vehicle, pre-fill the
+        # form from an existing entry to make it a click-through. After a
+        # validation error, keep what the user just typed instead.
+        if user_input is not None:
+            suggested: dict[str, Any] = user_input
+        else:
+            existing = self._async_current_entries()
+            suggested = dict(existing[0].data) if existing else {}
 
         schema = vol.Schema(
             {
@@ -190,7 +207,9 @@ class TeslaTelemetryOAuth2FlowHandler(
             }
         )
         return self.async_show_form(
-            step_id="endpoint", data_schema=schema, errors=errors
+            step_id="endpoint",
+            data_schema=self.add_suggested_values_to_schema(schema, suggested),
+            errors=errors,
         )
 
 

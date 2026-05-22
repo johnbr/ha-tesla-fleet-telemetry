@@ -1,0 +1,7 @@
+# Ruff configuration for the tesla_telemetry integration.
+#
+# The protobuf / flatbuffers bindings under proto/ are generated code,
+# vendored verbatim from Tesla's schemas, and excluded from linting.
+target-version = "py312"
+line-length = 88
+extend-exclude = ["custom_components/tesla_telemetry/proto"]
