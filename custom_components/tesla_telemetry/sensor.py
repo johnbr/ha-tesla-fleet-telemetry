@@ -3,6 +3,10 @@
 Each entity subscribes to one signal name on the per-VIN coordinator and
 renders the latest value.  Decoding of the raw ``Value`` oneof lives in
 ``values.py``; this file is only concerned with HA entity wiring.
+
+Entities use ``has_entity_name`` — the vehicle name lives on the HA device
+(see ``TeslaTelemetryCoordinator.device_info``) and each entity carries
+only its functional name (e.g. "Speed").
 """
 from __future__ import annotations
 
@@ -29,7 +33,6 @@ from homeassistant.const import (
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -96,44 +99,44 @@ async def async_setup_entry(
     async_add_entities(
         [
             # Driving / nav
-            RoadrunnerSpeedSensor(coordinator),
-            RoadrunnerDistanceToArrivalSensor(coordinator),
-            RoadrunnerTimeToArrivalSensor(coordinator),
-            RoadrunnerTrafficDelaySensor(coordinator),
-            RoadrunnerOdometerSensor(coordinator),
-            RoadrunnerGearSensor(coordinator),
+            SpeedSensor(coordinator),
+            DistanceToArrivalSensor(coordinator),
+            TimeToArrivalSensor(coordinator),
+            TrafficDelaySensor(coordinator),
+            OdometerSensor(coordinator),
+            GearSensor(coordinator),
             # Battery / range
-            RoadrunnerBatteryLevelSensor(coordinator),
-            RoadrunnerSocSensor(coordinator),
-            RoadrunnerEstBatteryRangeSensor(coordinator),
-            RoadrunnerRatedRangeSensor(coordinator),
+            BatteryLevelSensor(coordinator),
+            SocSensor(coordinator),
+            EstBatteryRangeSensor(coordinator),
+            RatedRangeSensor(coordinator),
             # Charging
-            RoadrunnerChargingStateSensor(coordinator),
-            RoadrunnerChargeRateSensor(coordinator),
-            RoadrunnerAcChargingPowerSensor(coordinator),
-            RoadrunnerDcChargingPowerSensor(coordinator),
-            RoadrunnerAcChargingEnergyInSensor(coordinator),
-            RoadrunnerDcChargingEnergyInSensor(coordinator),
-            RoadrunnerChargeAmpsSensor(coordinator),
-            RoadrunnerChargerVoltageSensor(coordinator),
-            RoadrunnerFastChargerPresentSensor(coordinator),
-            RoadrunnerChargingCableTypeSensor(coordinator),
-            RoadrunnerChargeLimitSocSensor(coordinator),
-            RoadrunnerTimeToFullChargeSensor(coordinator),
+            ChargingStateSensor(coordinator),
+            ChargeRateSensor(coordinator),
+            AcChargingPowerSensor(coordinator),
+            DcChargingPowerSensor(coordinator),
+            AcChargingEnergyInSensor(coordinator),
+            DcChargingEnergyInSensor(coordinator),
+            ChargeAmpsSensor(coordinator),
+            ChargerVoltageSensor(coordinator),
+            FastChargerPresentSensor(coordinator),
+            ChargingCableTypeSensor(coordinator),
+            ChargeLimitSocSensor(coordinator),
+            TimeToFullChargeSensor(coordinator),
             # Climate / cabin
-            RoadrunnerInsideTempSensor(coordinator),
-            RoadrunnerOutsideTempSensor(coordinator),
-            RoadrunnerHvacLeftTempRequestSensor(coordinator),
-            RoadrunnerHvacRightTempRequestSensor(coordinator),
+            InsideTempSensor(coordinator),
+            OutsideTempSensor(coordinator),
+            HvacLeftTempRequestSensor(coordinator),
+            HvacRightTempRequestSensor(coordinator),
             # TPMS
-            RoadrunnerTirePressureFlSensor(coordinator),
-            RoadrunnerTirePressureFrSensor(coordinator),
-            RoadrunnerTirePressureRlSensor(coordinator),
-            RoadrunnerTirePressureRrSensor(coordinator),
+            TirePressureFlSensor(coordinator),
+            TirePressureFrSensor(coordinator),
+            TirePressureRlSensor(coordinator),
+            TirePressureRrSensor(coordinator),
             # Software update
-            RoadrunnerSoftwareVersionSensor(coordinator),
-            RoadrunnerSoftwareUpdateDownloadSensor(coordinator),
-            RoadrunnerSoftwareUpdateInstallSensor(coordinator),
+            SoftwareVersionSensor(coordinator),
+            SoftwareUpdateDownloadSensor(coordinator),
+            SoftwareUpdateInstallSensor(coordinator),
         ]
     )
 
@@ -141,19 +144,16 @@ async def async_setup_entry(
 # ---------------------------------------------------------------------------
 # Base
 # ---------------------------------------------------------------------------
-class _BaseRoadrunnerSensor(SensorEntity):
+class _BaseTelemetrySensor(SensorEntity):
     """Subscribe to one signal and call `_handle` on every sample."""
 
     _attr_should_poll = False
+    _attr_has_entity_name = True
     _signal_name: str = ""
 
     def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:
         self._coordinator = coordinator
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.vin)},
-            manufacturer="Tesla",
-            name="Roadrunner",
-        )
+        self._attr_device_info = coordinator.device_info
 
     async def async_added_to_hass(self) -> None:
         sample = self._coordinator.get(self._signal_name)
@@ -189,14 +189,14 @@ def _scalar_sensor(
     unit: str | None = None,
     precision: int | None = None,
     extractor: Callable[[Any], Any] = value_as_float,
-) -> type[_BaseRoadrunnerSensor]:
+) -> type[_BaseTelemetrySensor]:
     """Build a small SensorEntity subclass for a numeric signal.
 
     Most charging/range/temperature/TPMS sensors are identical except for the
     signal name, unit, and device class — this factory removes the boilerplate.
     """
 
-    class _Sensor(_BaseRoadrunnerSensor):
+    class _Sensor(_BaseTelemetrySensor):
         _signal_name = signal
         _attr_name = name
         _attr_device_class = device_class
@@ -211,16 +211,16 @@ def _scalar_sensor(
         def _handle(self, sample: SignalSample) -> None:
             self._attr_native_value = extractor(sample.value)
 
-    _Sensor.__name__ = f"_Roadrunner{suffix.title().replace('_', '')}"
+    _Sensor.__name__ = f"_{suffix.title().replace('_', '')}"
     return _Sensor
 
 
 # ---------------------------------------------------------------------------
 # Driving / nav
 # ---------------------------------------------------------------------------
-class RoadrunnerSpeedSensor(_BaseRoadrunnerSensor):
+class SpeedSensor(_BaseTelemetrySensor):
     _signal_name = SIGNAL_VEHICLE_SPEED
-    _attr_name = "Roadrunner Speed Telemetry"
+    _attr_name = "Speed"
     _attr_device_class = SensorDeviceClass.SPEED
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfSpeed.MILES_PER_HOUR
@@ -234,9 +234,9 @@ class RoadrunnerSpeedSensor(_BaseRoadrunnerSensor):
         self._attr_native_value = value_as_float(sample.value)
 
 
-class RoadrunnerDistanceToArrivalSensor(_BaseRoadrunnerSensor):
+class DistanceToArrivalSensor(_BaseTelemetrySensor):
     _signal_name = SIGNAL_MILES_TO_ARRIVAL
-    _attr_name = "Roadrunner Distance to Arrival Telemetry"
+    _attr_name = "Distance to arrival"
     _attr_device_class = SensorDeviceClass.DISTANCE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfLength.MILES
@@ -250,12 +250,12 @@ class RoadrunnerDistanceToArrivalSensor(_BaseRoadrunnerSensor):
         self._attr_native_value = value_as_float(sample.value)
 
 
-class RoadrunnerTimeToArrivalSensor(_BaseRoadrunnerSensor):
+class TimeToArrivalSensor(_BaseTelemetrySensor):
     """Anchor the absolute ETA against the vehicle-side ``created_at`` so
     jittery delivery doesn't make the rendered "5 min from now" jump around."""
 
     _signal_name = SIGNAL_MINUTES_TO_ARRIVAL
-    _attr_name = "Roadrunner Time to Arrival Telemetry"
+    _attr_name = "Time to arrival"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:
@@ -273,9 +273,9 @@ class RoadrunnerTimeToArrivalSensor(_BaseRoadrunnerSensor):
         )
 
 
-class RoadrunnerTrafficDelaySensor(_BaseRoadrunnerSensor):
+class TrafficDelaySensor(_BaseTelemetrySensor):
     _signal_name = SIGNAL_ROUTE_TRAFFIC_DELAY
-    _attr_name = "Roadrunner Traffic Delay Telemetry"
+    _attr_name = "Traffic delay"
     _attr_device_class = SensorDeviceClass.DURATION
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfTime.MINUTES
@@ -289,10 +289,10 @@ class RoadrunnerTrafficDelaySensor(_BaseRoadrunnerSensor):
         self._attr_native_value = value_as_float(sample.value)
 
 
-RoadrunnerOdometerSensor = _scalar_sensor(
+OdometerSensor = _scalar_sensor(
     signal=SIGNAL_ODOMETER,
     suffix="odometer_telemetry",
-    name="Roadrunner Odometer Telemetry",
+    name="Odometer",
     device_class=SensorDeviceClass.DISTANCE,
     state_class=SensorStateClass.TOTAL_INCREASING,
     unit=UnitOfLength.MILES,
@@ -300,11 +300,11 @@ RoadrunnerOdometerSensor = _scalar_sensor(
 )
 
 
-class RoadrunnerGearSensor(_BaseRoadrunnerSensor):
+class GearSensor(_BaseTelemetrySensor):
     """Friendly shift-state string (P/R/N/D) extracted from ShiftState enum."""
 
     _signal_name = SIGNAL_GEAR
-    _attr_name = "Roadrunner Gear Telemetry"
+    _attr_name = "Gear"
     _attr_state_class = None
 
     _GEAR_MAP = {
@@ -328,37 +328,37 @@ class RoadrunnerGearSensor(_BaseRoadrunnerSensor):
 # ---------------------------------------------------------------------------
 # Battery / range
 # ---------------------------------------------------------------------------
-RoadrunnerBatteryLevelSensor = _scalar_sensor(
+BatteryLevelSensor = _scalar_sensor(
     signal=SIGNAL_BATTERY_LEVEL,
     suffix="battery_level_telemetry",
-    name="Roadrunner Battery Level Telemetry",
+    name="Battery level",
     device_class=SensorDeviceClass.BATTERY,
     unit=PERCENTAGE,
     precision=0,
 )
 
-RoadrunnerSocSensor = _scalar_sensor(
+SocSensor = _scalar_sensor(
     signal=SIGNAL_SOC,
     suffix="soc_telemetry",
-    name="Roadrunner State of Charge Telemetry",
+    name="State of charge",
     device_class=SensorDeviceClass.BATTERY,
     unit=PERCENTAGE,
     precision=1,
 )
 
-RoadrunnerEstBatteryRangeSensor = _scalar_sensor(
+EstBatteryRangeSensor = _scalar_sensor(
     signal=SIGNAL_EST_BATTERY_RANGE,
     suffix="battery_range_telemetry",
-    name="Roadrunner Battery Range Telemetry",
+    name="Battery range",
     device_class=SensorDeviceClass.DISTANCE,
     unit=UnitOfLength.MILES,
     precision=0,
 )
 
-RoadrunnerRatedRangeSensor = _scalar_sensor(
+RatedRangeSensor = _scalar_sensor(
     signal=SIGNAL_RATED_RANGE,
     suffix="rated_range_telemetry",
-    name="Roadrunner Rated Range Telemetry",
+    name="Rated range",
     device_class=SensorDeviceClass.DISTANCE,
     unit=UnitOfLength.MILES,
     precision=0,
@@ -368,15 +368,15 @@ RoadrunnerRatedRangeSensor = _scalar_sensor(
 # ---------------------------------------------------------------------------
 # Charging
 # ---------------------------------------------------------------------------
-class RoadrunnerChargingStateSensor(_BaseRoadrunnerSensor):
+class ChargingStateSensor(_BaseTelemetrySensor):
     """Friendly charging state string (charging/disconnected/etc).
 
     Tracks Tesla's ``DetailedChargeState`` enum, mapped to lower-snake-case
-    so the legacy ``sensor.roadrunner_charging`` UI shows the same labels.
+    strings exposed as an ENUM sensor.
     """
 
     _signal_name = SIGNAL_DETAILED_CHARGE_STATE
-    _attr_name = "Roadrunner Charging State Telemetry"
+    _attr_name = "Charging state"
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = [
         "disconnected",
@@ -396,73 +396,73 @@ class RoadrunnerChargingStateSensor(_BaseRoadrunnerSensor):
         self._attr_native_value = value_as_charge_state(sample.value)
 
 
-RoadrunnerChargeRateSensor = _scalar_sensor(
+ChargeRateSensor = _scalar_sensor(
     signal=SIGNAL_CHARGE_RATE_MILES_PER_HOUR,
     suffix="charge_rate_telemetry",
-    name="Roadrunner Charge Rate Telemetry",
+    name="Charge rate",
     device_class=SensorDeviceClass.SPEED,
     unit=UnitOfSpeed.MILES_PER_HOUR,
     precision=1,
 )
 
-RoadrunnerAcChargingPowerSensor = _scalar_sensor(
+AcChargingPowerSensor = _scalar_sensor(
     signal=SIGNAL_AC_CHARGING_POWER,
     suffix="ac_charging_power_telemetry",
-    name="Roadrunner AC Charging Power Telemetry",
+    name="AC charging power",
     device_class=SensorDeviceClass.POWER,
     unit=UnitOfPower.KILO_WATT,
     precision=2,
 )
 
-RoadrunnerDcChargingPowerSensor = _scalar_sensor(
+DcChargingPowerSensor = _scalar_sensor(
     signal=SIGNAL_DC_CHARGING_POWER,
     suffix="dc_charging_power_telemetry",
-    name="Roadrunner DC Charging Power Telemetry",
+    name="DC charging power",
     device_class=SensorDeviceClass.POWER,
     unit=UnitOfPower.KILO_WATT,
     precision=1,
 )
 
-RoadrunnerAcChargingEnergyInSensor = _scalar_sensor(
+AcChargingEnergyInSensor = _scalar_sensor(
     signal=SIGNAL_AC_CHARGING_ENERGY_IN,
     suffix="ac_charging_energy_in_telemetry",
-    name="Roadrunner AC Charge Energy Added Telemetry",
+    name="AC charge energy added",
     device_class=SensorDeviceClass.ENERGY,
     state_class=SensorStateClass.TOTAL_INCREASING,
     unit=UnitOfEnergy.KILO_WATT_HOUR,
     precision=2,
 )
 
-RoadrunnerDcChargingEnergyInSensor = _scalar_sensor(
+DcChargingEnergyInSensor = _scalar_sensor(
     signal=SIGNAL_DC_CHARGING_ENERGY_IN,
     suffix="dc_charging_energy_in_telemetry",
-    name="Roadrunner DC Charge Energy Added Telemetry",
+    name="DC charge energy added",
     device_class=SensorDeviceClass.ENERGY,
     state_class=SensorStateClass.TOTAL_INCREASING,
     unit=UnitOfEnergy.KILO_WATT_HOUR,
     precision=2,
 )
 
-RoadrunnerChargeAmpsSensor = _scalar_sensor(
+ChargeAmpsSensor = _scalar_sensor(
     signal=SIGNAL_CHARGE_AMPS,
     suffix="charge_amps_telemetry",
-    name="Roadrunner Charger Current Telemetry",
+    name="Charger current",
     device_class=SensorDeviceClass.CURRENT,
     unit=UnitOfElectricCurrent.AMPERE,
     precision=1,
 )
 
-RoadrunnerChargerVoltageSensor = _scalar_sensor(
+ChargerVoltageSensor = _scalar_sensor(
     signal=SIGNAL_CHARGER_VOLTAGE,
     suffix="charger_voltage_telemetry",
-    name="Roadrunner Charger Voltage Telemetry",
+    name="Charger voltage",
     device_class=SensorDeviceClass.VOLTAGE,
     unit=UnitOfElectricPotential.VOLT,
     precision=0,
 )
 
 
-class RoadrunnerFastChargerPresentSensor(_BaseRoadrunnerSensor):
+class FastChargerPresentSensor(_BaseTelemetrySensor):
     """Friendly fast-charger type (Supercharger/CCS/CHAdeMO/none).
 
     The signal is sometimes a bool (presence) and sometimes the FastCharger
@@ -470,7 +470,7 @@ class RoadrunnerFastChargerPresentSensor(_BaseRoadrunnerSensor):
     """
 
     _signal_name = SIGNAL_FAST_CHARGER_PRESENT
-    _attr_name = "Roadrunner Fast Charger Type Telemetry"
+    _attr_name = "Fast charger type"
     _attr_state_class = None
 
     _MAP = {
@@ -500,9 +500,9 @@ class RoadrunnerFastChargerPresentSensor(_BaseRoadrunnerSensor):
             self._attr_native_value = "Fast" if bv else "None"
 
 
-class RoadrunnerChargingCableTypeSensor(_BaseRoadrunnerSensor):
+class ChargingCableTypeSensor(_BaseTelemetrySensor):
     _signal_name = SIGNAL_CHARGING_CABLE_TYPE
-    _attr_name = "Roadrunner Charging Cable Telemetry"
+    _attr_name = "Charging cable"
     _attr_state_class = None
 
     _MAP = {
@@ -523,21 +523,21 @@ class RoadrunnerChargingCableTypeSensor(_BaseRoadrunnerSensor):
         self._attr_native_value = self._MAP.get(name, value_as_string(sample.value))
 
 
-RoadrunnerChargeLimitSocSensor = _scalar_sensor(
+ChargeLimitSocSensor = _scalar_sensor(
     signal=SIGNAL_CHARGE_LIMIT_SOC,
     suffix="charge_limit_soc_telemetry",
-    name="Roadrunner Charge Limit Telemetry",
+    name="Charge limit",
     state_class=None,
     unit=PERCENTAGE,
     precision=0,
 )
 
 
-class RoadrunnerTimeToFullChargeSensor(_BaseRoadrunnerSensor):
+class TimeToFullChargeSensor(_BaseTelemetrySensor):
     """Hours-until-full as a duration in minutes (Tesla emits hours as a float)."""
 
     _signal_name = SIGNAL_TIME_TO_FULL_CHARGE
-    _attr_name = "Roadrunner Time to Full Charge Telemetry"
+    _attr_name = "Time to full charge"
     _attr_device_class = SensorDeviceClass.DURATION
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfTime.MINUTES
@@ -558,38 +558,38 @@ class RoadrunnerTimeToFullChargeSensor(_BaseRoadrunnerSensor):
 # ---------------------------------------------------------------------------
 # Climate / cabin
 # ---------------------------------------------------------------------------
-RoadrunnerInsideTempSensor = _scalar_sensor(
+InsideTempSensor = _scalar_sensor(
     signal=SIGNAL_INSIDE_TEMP,
     suffix="inside_temperature_telemetry",
-    name="Roadrunner Inside Temperature Telemetry",
+    name="Inside temperature",
     device_class=SensorDeviceClass.TEMPERATURE,
     unit=UnitOfTemperature.CELSIUS,
     precision=1,
 )
 
-RoadrunnerOutsideTempSensor = _scalar_sensor(
+OutsideTempSensor = _scalar_sensor(
     signal=SIGNAL_OUTSIDE_TEMP,
     suffix="outside_temperature_telemetry",
-    name="Roadrunner Outside Temperature Telemetry",
+    name="Outside temperature",
     device_class=SensorDeviceClass.TEMPERATURE,
     unit=UnitOfTemperature.CELSIUS,
     precision=1,
 )
 
-RoadrunnerHvacLeftTempRequestSensor = _scalar_sensor(
+HvacLeftTempRequestSensor = _scalar_sensor(
     signal=SIGNAL_HVAC_LEFT_TEMP_REQUEST,
     suffix="hvac_left_temp_request_telemetry",
-    name="Roadrunner Climate Left Setpoint Telemetry",
+    name="Climate left setpoint",
     device_class=SensorDeviceClass.TEMPERATURE,
     state_class=None,
     unit=UnitOfTemperature.CELSIUS,
     precision=1,
 )
 
-RoadrunnerHvacRightTempRequestSensor = _scalar_sensor(
+HvacRightTempRequestSensor = _scalar_sensor(
     signal=SIGNAL_HVAC_RIGHT_TEMP_REQUEST,
     suffix="hvac_right_temp_request_telemetry",
-    name="Roadrunner Climate Right Setpoint Telemetry",
+    name="Climate right setpoint",
     device_class=SensorDeviceClass.TEMPERATURE,
     state_class=None,
     unit=UnitOfTemperature.CELSIUS,
@@ -600,32 +600,29 @@ RoadrunnerHvacRightTempRequestSensor = _scalar_sensor(
 # ---------------------------------------------------------------------------
 # TPMS
 # ---------------------------------------------------------------------------
-def _tpms(signal: str, position: str) -> type[_BaseRoadrunnerSensor]:
+def _tpms(signal: str, position: str) -> type[_BaseTelemetrySensor]:
     return _scalar_sensor(
         signal=signal,
         suffix=f"tire_pressure_{position}_telemetry",
-        name=(
-            "Roadrunner Tire Pressure "
-            f"{position.replace('_', ' ').title()} Telemetry"
-        ),
+        name=f"Tire pressure {position.replace('_', ' ')}",
         device_class=SensorDeviceClass.PRESSURE,
         unit=UnitOfPressure.BAR,
         precision=2,
     )
 
 
-RoadrunnerTirePressureFlSensor = _tpms(SIGNAL_TPMS_PRESSURE_FL, "front_left")
-RoadrunnerTirePressureFrSensor = _tpms(SIGNAL_TPMS_PRESSURE_FR, "front_right")
-RoadrunnerTirePressureRlSensor = _tpms(SIGNAL_TPMS_PRESSURE_RL, "rear_left")
-RoadrunnerTirePressureRrSensor = _tpms(SIGNAL_TPMS_PRESSURE_RR, "rear_right")
+TirePressureFlSensor = _tpms(SIGNAL_TPMS_PRESSURE_FL, "front_left")
+TirePressureFrSensor = _tpms(SIGNAL_TPMS_PRESSURE_FR, "front_right")
+TirePressureRlSensor = _tpms(SIGNAL_TPMS_PRESSURE_RL, "rear_left")
+TirePressureRrSensor = _tpms(SIGNAL_TPMS_PRESSURE_RR, "rear_right")
 
 
 # ---------------------------------------------------------------------------
 # Software update
 # ---------------------------------------------------------------------------
-class RoadrunnerSoftwareVersionSensor(_BaseRoadrunnerSensor):
+class SoftwareVersionSensor(_BaseTelemetrySensor):
     _signal_name = SIGNAL_SOFTWARE_UPDATE_VERSION
-    _attr_name = "Roadrunner Software Version Telemetry"
+    _attr_name = "Software version"
     _attr_state_class = None
 
     def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:
@@ -636,19 +633,19 @@ class RoadrunnerSoftwareVersionSensor(_BaseRoadrunnerSensor):
         self._attr_native_value = value_as_string(sample.value)
 
 
-RoadrunnerSoftwareUpdateDownloadSensor = _scalar_sensor(
+SoftwareUpdateDownloadSensor = _scalar_sensor(
     signal=SIGNAL_SOFTWARE_UPDATE_DOWNLOAD_PCT,
     suffix="software_update_download_telemetry",
-    name="Roadrunner Software Update Download Telemetry",
+    name="Software update download",
     state_class=None,
     unit=PERCENTAGE,
     precision=0,
 )
 
-RoadrunnerSoftwareUpdateInstallSensor = _scalar_sensor(
+SoftwareUpdateInstallSensor = _scalar_sensor(
     signal=SIGNAL_SOFTWARE_UPDATE_INSTALL_PCT,
     suffix="software_update_install_telemetry",
-    name="Roadrunner Software Update Install Telemetry",
+    name="Software update install",
     state_class=None,
     unit=PERCENTAGE,
     precision=0,

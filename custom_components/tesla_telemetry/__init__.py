@@ -12,6 +12,7 @@ from .const import (
     CONF_PRIVATE_KEY_PEM,
     CONF_PROXY_SECRET,
     CONF_REGION,
+    CONF_VEHICLE_NAME,
     CONF_VIN,
     DEFAULT_REGION,
     DOMAIN,
@@ -36,6 +37,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     vin: str = entry.data[CONF_VIN]
     proxy_secret: str = entry.data.get(CONF_PROXY_SECRET, "")
+    # Entries created before CONF_VEHICLE_NAME existed fall back to the
+    # entry title (minus the " (VIN)" suffix the config flow appends).
+    vehicle_name: str = (
+        entry.data.get(CONF_VEHICLE_NAME)
+        or entry.title.removesuffix(f" ({vin})")
+        or vin
+    )
 
     # Resolve the application_credentials-backed OAuth implementation and
     # build the long-lived session HA's framework will refresh through.
@@ -57,7 +65,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     client_id = getattr(implementation, "client_id", "")
     client_secret = getattr(implementation, "client_secret", "")
 
-    coordinator = TeslaTelemetryCoordinator(hass, vin)
+    coordinator = TeslaTelemetryCoordinator(hass, vin, vehicle_name)
 
     api = TeslaApi(
         aiohttp_client.async_get_clientsession(hass),

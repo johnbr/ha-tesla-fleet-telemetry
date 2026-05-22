@@ -2,13 +2,13 @@
 
 Two trackers are exposed per vehicle:
 
-  * `<VIN>_location_telemetry`  — the car's live GPS location, state
-    derived from zone (HA computes home / not_home / <zone> from lat/lon).
-  * `<VIN>_route_telemetry`     — the active in-car nav destination.
-    State is the destination name string; lat/lon attrs point at the
-    destination, not the car.
+  * Location — the car's live GPS location, state derived from zone (HA
+    computes home / not_home / <zone> from lat/lon).
+  * Route    — the active in-car nav destination. State is the destination
+    name string; lat/lon attrs point at the destination, not the car.
 
-Both subscribe to dispatcher signals from `TeslaTelemetryCoordinator`.
+Both subscribe to dispatcher signals from `TeslaTelemetryCoordinator` and
+use ``has_entity_name`` so the vehicle name comes from the HA device.
 """
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ import logging
 from homeassistant.components.device_tracker import SourceType, TrackerEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -46,31 +45,24 @@ async def async_setup_entry(
     ]
     async_add_entities(
         [
-            RoadrunnerLocationTracker(coordinator),
-            RoadrunnerRouteTracker(coordinator),
+            LocationTracker(coordinator),
+            RouteTracker(coordinator),
         ]
     )
 
 
-def _device_info(vin: str) -> DeviceInfo:
-    return DeviceInfo(
-        identifiers={(DOMAIN, vin)},
-        manufacturer="Tesla",
-        name="Roadrunner",
-    )
-
-
-class _BaseRoadrunnerTracker(TrackerEntity):
+class _BaseTelemetryTracker(TrackerEntity):
     """Shared plumbing — dispatcher subscription, lat/lon storage."""
 
     _attr_should_poll = False
+    _attr_has_entity_name = True
     _attr_source_type = SourceType.GPS
 
     def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:
         self._coordinator = coordinator
         self._latitude: float | None = None
         self._longitude: float | None = None
-        self._attr_device_info = _device_info(coordinator.vin)
+        self._attr_device_info = coordinator.device_info
 
     @property
     def latitude(self) -> float | None:
@@ -95,10 +87,8 @@ class _BaseRoadrunnerTracker(TrackerEntity):
         )
 
 
-class RoadrunnerLocationTracker(_BaseRoadrunnerTracker):
-    _attr_name = "Roadrunner Location Telemetry"
-    _attr_entity_picture = "/local/map-icons/mytesla.png"
-    _attr_extra_state_attributes = {"person_name": "John B"}
+class LocationTracker(_BaseTelemetryTracker):
+    _attr_name = "Location"
 
     def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:
         super().__init__(coordinator)
@@ -120,9 +110,8 @@ class RoadrunnerLocationTracker(_BaseRoadrunnerTracker):
             self.async_write_ha_state()
 
 
-class RoadrunnerRouteTracker(_BaseRoadrunnerTracker):
-    _attr_name = "Roadrunner Route Telemetry"
-    _attr_entity_picture = "/local/map-icons/map-pin.png"
+class RouteTracker(_BaseTelemetryTracker):
+    _attr_name = "Route"
 
     def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:
         super().__init__(coordinator)
@@ -132,9 +121,8 @@ class RoadrunnerRouteTracker(_BaseRoadrunnerTracker):
     @property
     def location_name(self) -> str | None:
         """Returning a non-None value here makes HA use it as the state
-        directly, bypassing zone-from-lat/lon resolution. That matches the
-        legacy `device_tracker.roadrunner_route` semantics: state is the
-        destination name."""
+        directly, bypassing zone-from-lat/lon resolution: the state is the
+        in-car navigation destination name."""
         return self._destination_name
 
     async def async_added_to_hass(self) -> None:

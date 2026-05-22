@@ -37,6 +37,7 @@ from .const import (
     CONF_PRIVATE_KEY_PEM,
     CONF_PROXY_SECRET,
     CONF_REGION,
+    CONF_VEHICLE_NAME,
     CONF_VIN,
     DEFAULT_REGION,
     DOMAIN,
@@ -157,14 +158,17 @@ class TeslaTelemetryOAuth2FlowHandler(
                     (v for v in self._vehicles if v.get("vin") == self._chosen_vin),
                     {},
                 )
-                title = vehicle.get("display_name") or "Roadrunner"
-                title = f"{title} ({self._chosen_vin})"
+                # Falls back to the VIN when the vehicle has no display
+                # name; this becomes the HA device name for the vehicle.
+                vehicle_name = vehicle.get("display_name") or self._chosen_vin
+                title = f"{vehicle_name} ({self._chosen_vin})"
                 # ``self._oauth_data`` already holds ``auth_implementation``
                 # (which application_credential to use) and ``token`` (the
                 # OAuth tokens). HA's OAuth2Session reads both at runtime.
                 data = {
                     **self._oauth_data,
                     CONF_VIN: self._chosen_vin,
+                    CONF_VEHICLE_NAME: vehicle_name,
                     CONF_REGION: self._region,
                     CONF_HOSTNAME: user_input[CONF_HOSTNAME].strip(),
                     CONF_PORT: int(user_input[CONF_PORT]),

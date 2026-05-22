@@ -165,6 +165,7 @@ STORAGE_KEY_OAUTH = "tesla_telemetry_oauth"
 
 # Config entry data keys
 CONF_VIN = "vin"
+CONF_VEHICLE_NAME = "vehicle_name"
 CONF_PARTNER_DOMAIN = "partner_domain"
 CONF_PROXY_SECRET = "proxy_secret"
 CONF_REGION = "region"

@@ -9,7 +9,7 @@
         "title": "Authorize with Tesla"
       },
       "vehicle": {
-        "title": "Pick the Roadrunner",
+        "title": "Select vehicle",
         "description": "Choose the VIN this integration should track.",
         "data": {
           "vin": "Vehicle"
