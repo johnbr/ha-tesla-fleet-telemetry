@@ -12,10 +12,13 @@ Uses HA's standard OAuth2 framework via ``application_credentials``:
      Tesla's `/api/1/vehicles` response and against ``async_set_unique_id``
      to prevent duplicate entries.
   4. ``endpoint`` — public hostname, port, partner domain, proxy shared
-     secret, and the partner EC P-256 private key (PEM).
+     secret, and the partner EC P-256 private key (PEM). These are
+     deployment-wide; when adding a second vehicle the step is pre-filled
+     from an existing entry.
 
 Each integration goes through OAuth independently and gets its own
 refresh-token chain from Tesla — no more rotation race with tesla_fleet.
+One config entry is created per vehicle (VIN), each its own HA device.
 """
 from __future__ import annotations
 
@@ -178,6 +181,16 @@ class TeslaTelemetryOAuth2FlowHandler(
                 }
                 return self.async_create_entry(title=title, data=data)
 
+        # The endpoint is deployment-wide — same nginx, same partner key —
+        # so when the user adds a second (or later) vehicle, pre-fill the
+        # form from an existing entry to make it a click-through. After a
+        # validation error, keep what the user just typed instead.
+        if user_input is not None:
+            suggested: dict[str, Any] = user_input
+        else:
+            existing = self._async_current_entries()
+            suggested = dict(existing[0].data) if existing else {}
+
         schema = vol.Schema(
             {
                 vol.Required(CONF_HOSTNAME): str,
@@ -194,7 +207,9 @@ class TeslaTelemetryOAuth2FlowHandler(
             }
         )
         return self.async_show_form(
-            step_id="endpoint", data_schema=schema, errors=errors
+            step_id="endpoint",
+            data_schema=self.add_suggested_values_to_schema(schema, suggested),
+            errors=errors,
         )
 
 
