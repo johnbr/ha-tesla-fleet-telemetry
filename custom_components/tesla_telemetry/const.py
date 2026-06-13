@@ -63,6 +63,22 @@ SIGNAL_TPMS_PRESSURE_RR = "TpmsPressureRr"
 SIGNAL_SOFTWARE_UPDATE_VERSION = "SoftwareUpdateVersion"
 SIGNAL_SOFTWARE_UPDATE_DOWNLOAD_PCT = "SoftwareUpdateDownloadPercentComplete"
 SIGNAL_SOFTWARE_UPDATE_INSTALL_PCT = "SoftwareUpdateInstallationPercentComplete"
+# ----- Powertrain / performance -----
+# Drive-inverter signals are suffixed F (front) / R (rear). RWD cars only
+# report the rear drive unit, so the front entities stay unavailable on them.
+SIGNAL_MOTOR_STATOR_TEMP_FRONT = "DiStatorTempF"
+SIGNAL_MOTOR_STATOR_TEMP_REAR = "DiStatorTempR"
+SIGNAL_MOTOR_TORQUE_FRONT = "DiTorqueActualF"
+SIGNAL_MOTOR_TORQUE_REAR = "DiTorqueActualR"
+SIGNAL_LATERAL_ACCELERATION = "LateralAcceleration"
+SIGNAL_LONGITUDINAL_ACCELERATION = "LongitudinalAcceleration"
+# HV battery pack
+SIGNAL_PACK_VOLTAGE = "PackVoltage"
+SIGNAL_PACK_CURRENT = "PackCurrent"
+SIGNAL_MODULE_TEMP_MAX = "ModuleTempMax"
+SIGNAL_MODULE_TEMP_MIN = "ModuleTempMin"
+SIGNAL_BATTERY_HEATER_ON = "BatteryHeaterOn"
+SIGNAL_BMS_STATE = "BMSState"
 
 # Per-field intervals sent in fleet_telemetry_config (seconds). Tesla emits a
 # signal on change AND no more than once per the configured interval; it does
@@ -126,6 +142,20 @@ DEFAULT_INTERVALS_SECONDS: dict[str, int] = {
     SIGNAL_SOFTWARE_UPDATE_VERSION: 3600,
     SIGNAL_SOFTWARE_UPDATE_DOWNLOAD_PCT: 60,
     SIGNAL_SOFTWARE_UPDATE_INSTALL_PCT: 60,
+    # powertrain / performance — high-churn while driving, so use low ceilings
+    # to keep them live without flooding (push-on-change still applies)
+    SIGNAL_MOTOR_STATOR_TEMP_FRONT: 10,
+    SIGNAL_MOTOR_STATOR_TEMP_REAR: 10,
+    SIGNAL_MOTOR_TORQUE_FRONT: 5,
+    SIGNAL_MOTOR_TORQUE_REAR: 5,
+    SIGNAL_LATERAL_ACCELERATION: 5,
+    SIGNAL_LONGITUDINAL_ACCELERATION: 5,
+    SIGNAL_PACK_VOLTAGE: 5,
+    SIGNAL_PACK_CURRENT: 5,
+    SIGNAL_MODULE_TEMP_MAX: 30,
+    SIGNAL_MODULE_TEMP_MIN: 30,
+    SIGNAL_BATTERY_HEATER_ON: 30,
+    SIGNAL_BMS_STATE: 10,
 }
 
 # Named interval presets.  ``high_rate`` rewrites Location/VehicleSpeed/Gear/

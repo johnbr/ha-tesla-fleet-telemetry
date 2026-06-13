@@ -41,6 +41,7 @@ from .const import (
     SIGNAL_AC_CHARGING_ENERGY_IN,
     SIGNAL_AC_CHARGING_POWER,
     SIGNAL_BATTERY_LEVEL,
+    SIGNAL_BMS_STATE,
     SIGNAL_CHARGE_AMPS,
     SIGNAL_CHARGE_LIMIT_SOC,
     SIGNAL_CHARGE_RATE_MILES_PER_HOUR,
@@ -55,10 +56,20 @@ from .const import (
     SIGNAL_HVAC_LEFT_TEMP_REQUEST,
     SIGNAL_HVAC_RIGHT_TEMP_REQUEST,
     SIGNAL_INSIDE_TEMP,
+    SIGNAL_LATERAL_ACCELERATION,
+    SIGNAL_LONGITUDINAL_ACCELERATION,
     SIGNAL_MILES_TO_ARRIVAL,
     SIGNAL_MINUTES_TO_ARRIVAL,
+    SIGNAL_MODULE_TEMP_MAX,
+    SIGNAL_MODULE_TEMP_MIN,
+    SIGNAL_MOTOR_STATOR_TEMP_FRONT,
+    SIGNAL_MOTOR_STATOR_TEMP_REAR,
+    SIGNAL_MOTOR_TORQUE_FRONT,
+    SIGNAL_MOTOR_TORQUE_REAR,
     SIGNAL_ODOMETER,
     SIGNAL_OUTSIDE_TEMP,
+    SIGNAL_PACK_CURRENT,
+    SIGNAL_PACK_VOLTAGE,
     SIGNAL_RATED_RANGE,
     SIGNAL_ROUTE_TRAFFIC_DELAY,
     SIGNAL_SOC,
@@ -78,12 +89,19 @@ from .coordinator import (
     signal_dispatcher_topic,
 )
 from .values import (
+    BMS_STATE_OPTIONS,
+    value_as_bms_state,
     value_as_bool,
     value_as_charge_state,
     value_as_enum_name,
     value_as_float,
     value_as_string,
 )
+
+# Tesla reports acceleration in standard gravities and motor torque in newton-
+# metres; neither has a Home Assistant device class, so use literal units.
+UNIT_GRAVITY = "g"
+UNIT_NEWTON_METRE = "Nm"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -137,6 +155,19 @@ async def async_setup_entry(
             SoftwareVersionSensor(coordinator),
             SoftwareUpdateDownloadSensor(coordinator),
             SoftwareUpdateInstallSensor(coordinator),
+            # Powertrain / performance
+            MotorStatorTempFrontSensor(coordinator),
+            MotorStatorTempRearSensor(coordinator),
+            MotorTorqueFrontSensor(coordinator),
+            MotorTorqueRearSensor(coordinator),
+            LateralAccelerationSensor(coordinator),
+            LongitudinalAccelerationSensor(coordinator),
+            PackVoltageSensor(coordinator),
+            PackCurrentSensor(coordinator),
+            PackPowerSensor(coordinator),
+            ModuleTempMaxSensor(coordinator),
+            ModuleTempMinSensor(coordinator),
+            BmsStateSensor(coordinator),
         ]
     )
 
@@ -650,3 +681,161 @@ SoftwareUpdateInstallSensor = _scalar_sensor(
     unit=PERCENTAGE,
     precision=0,
 )
+
+
+# ---------------------------------------------------------------------------
+# Powertrain / performance
+# ---------------------------------------------------------------------------
+MotorStatorTempFrontSensor = _scalar_sensor(
+    signal=SIGNAL_MOTOR_STATOR_TEMP_FRONT,
+    suffix="motor_stator_temp_front_telemetry",
+    name="Front motor stator temperature",
+    device_class=SensorDeviceClass.TEMPERATURE,
+    unit=UnitOfTemperature.CELSIUS,
+    precision=0,
+)
+
+MotorStatorTempRearSensor = _scalar_sensor(
+    signal=SIGNAL_MOTOR_STATOR_TEMP_REAR,
+    suffix="motor_stator_temp_rear_telemetry",
+    name="Rear motor stator temperature",
+    device_class=SensorDeviceClass.TEMPERATURE,
+    unit=UnitOfTemperature.CELSIUS,
+    precision=0,
+)
+
+MotorTorqueFrontSensor = _scalar_sensor(
+    signal=SIGNAL_MOTOR_TORQUE_FRONT,
+    suffix="motor_torque_front_telemetry",
+    name="Front motor torque",
+    unit=UNIT_NEWTON_METRE,
+    precision=0,
+)
+
+MotorTorqueRearSensor = _scalar_sensor(
+    signal=SIGNAL_MOTOR_TORQUE_REAR,
+    suffix="motor_torque_rear_telemetry",
+    name="Rear motor torque",
+    unit=UNIT_NEWTON_METRE,
+    precision=0,
+)
+
+LateralAccelerationSensor = _scalar_sensor(
+    signal=SIGNAL_LATERAL_ACCELERATION,
+    suffix="lateral_acceleration_telemetry",
+    name="Lateral acceleration",
+    unit=UNIT_GRAVITY,
+    precision=2,
+)
+
+LongitudinalAccelerationSensor = _scalar_sensor(
+    signal=SIGNAL_LONGITUDINAL_ACCELERATION,
+    suffix="longitudinal_acceleration_telemetry",
+    name="Longitudinal acceleration",
+    unit=UNIT_GRAVITY,
+    precision=2,
+)
+
+PackVoltageSensor = _scalar_sensor(
+    signal=SIGNAL_PACK_VOLTAGE,
+    suffix="pack_voltage_telemetry",
+    name="Battery pack voltage",
+    device_class=SensorDeviceClass.VOLTAGE,
+    unit=UnitOfElectricPotential.VOLT,
+    precision=1,
+)
+
+PackCurrentSensor = _scalar_sensor(
+    signal=SIGNAL_PACK_CURRENT,
+    suffix="pack_current_telemetry",
+    name="Battery pack current",
+    device_class=SensorDeviceClass.CURRENT,
+    unit=UnitOfElectricCurrent.AMPERE,
+    precision=1,
+)
+
+ModuleTempMaxSensor = _scalar_sensor(
+    signal=SIGNAL_MODULE_TEMP_MAX,
+    suffix="battery_module_temp_max_telemetry",
+    name="Battery temperature (max)",
+    device_class=SensorDeviceClass.TEMPERATURE,
+    unit=UnitOfTemperature.CELSIUS,
+    precision=1,
+)
+
+ModuleTempMinSensor = _scalar_sensor(
+    signal=SIGNAL_MODULE_TEMP_MIN,
+    suffix="battery_module_temp_min_telemetry",
+    name="Battery temperature (min)",
+    device_class=SensorDeviceClass.TEMPERATURE,
+    unit=UnitOfTemperature.CELSIUS,
+    precision=1,
+)
+
+
+class PackPowerSensor(_BaseTelemetrySensor):
+    """Instantaneous HV battery power, computed as pack voltage × current.
+
+    Tesla streams ``PackVoltage`` and ``PackCurrent`` separately, so this entity
+    multiplies the two latest samples to give live kW.  Positive = power leaving
+    the pack (propulsion / accessories); negative = power into the pack (regen /
+    charging).  It subscribes to *both* source signals and recomputes whenever
+    either one updates, rendering ``unavailable`` until both have arrived.
+    """
+
+    _attr_name = "Battery pack power"
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+    _attr_suggested_display_precision = 1
+
+    def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.vin}_pack_power_telemetry"
+
+    async def async_added_to_hass(self) -> None:
+        self._recompute()
+        for signal in (SIGNAL_PACK_VOLTAGE, SIGNAL_PACK_CURRENT):
+            self.async_on_remove(
+                async_dispatcher_connect(
+                    self.hass,
+                    signal_dispatcher_topic(self._coordinator.vin, signal),
+                    self._on_either_sample,
+                )
+            )
+
+    @callback
+    def _on_either_sample(self, sample: SignalSample) -> None:
+        self._recompute()
+        if self.hass is not None:
+            self.async_write_ha_state()
+
+    def _recompute(self) -> None:
+        v_sample = self._coordinator.get(SIGNAL_PACK_VOLTAGE)
+        i_sample = self._coordinator.get(SIGNAL_PACK_CURRENT)
+        if v_sample is None or i_sample is None:
+            self._attr_native_value = None
+            return
+        volts = value_as_float(v_sample.value)
+        amps = value_as_float(i_sample.value)
+        if volts is None or amps is None:
+            self._attr_native_value = None
+            return
+        self._attr_native_value = volts * amps / 1000.0
+
+
+class BmsStateSensor(_BaseTelemetrySensor):
+    """Battery management system state (standby/drive/charge/fault/etc)."""
+
+    _signal_name = SIGNAL_BMS_STATE
+    _attr_name = "BMS state"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = BMS_STATE_OPTIONS
+    _attr_state_class = None
+
+    def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.vin}_bms_state_telemetry"
+
+    def _handle(self, sample: SignalSample) -> None:
+        self._attr_native_value = value_as_bms_state(sample.value)
