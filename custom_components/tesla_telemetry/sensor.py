@@ -781,6 +781,12 @@ class PackPowerSensor(_BaseTelemetrySensor):
     the pack (propulsion / accessories); negative = power into the pack (regen /
     charging).  It subscribes to *both* source signals and recomputes whenever
     either one updates, rendering ``unavailable`` until both have arrived.
+
+    Note Tesla signs ``PackCurrent`` *negative* while discharging (confirmed
+    against drive history), so the raw ``V × I`` product is negative under
+    propulsion — we negate it here so this convenience sensor reads positive
+    for propulsion, like a Track-Mode power meter.  The raw ``PackCurrent``
+    sensor is left physically signed.
     """
 
     _attr_name = "Battery pack power"
@@ -821,7 +827,7 @@ class PackPowerSensor(_BaseTelemetrySensor):
         if volts is None or amps is None:
             self._attr_native_value = None
             return
-        self._attr_native_value = volts * amps / 1000.0
+        self._attr_native_value = -(volts * amps) / 1000.0
 
 
 class BmsStateSensor(_BaseTelemetrySensor):
