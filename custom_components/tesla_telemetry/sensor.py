@@ -98,10 +98,22 @@ from .values import (
     value_as_string,
 )
 
-# Tesla reports acceleration in standard gravities and motor torque in newton-
-# metres; neither has a Home Assistant device class, so use literal units.
+# Tesla reports lateral/longitudinal acceleration in m/s² and motor torque in
+# newton-metres; neither has a Home Assistant device class, so use literal
+# units. We convert acceleration to g (the unit a Track-Mode G-meter expects).
 UNIT_GRAVITY = "g"
 UNIT_NEWTON_METRE = "Nm"
+STANDARD_GRAVITY = 9.80665  # m/s² per g
+
+
+def _value_as_g(value: Any) -> float | None:
+    """Decode an acceleration sample (m/s²) and convert to g.
+
+    Confirmed m/s², not g: at peak propulsion the longitudinal value tracked
+    ~0.45 g (≈4.4 m/s²) — sane as m/s², impossible as raw g.
+    """
+    raw = value_as_float(value)
+    return None if raw is None else raw / STANDARD_GRAVITY
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -726,6 +738,7 @@ LateralAccelerationSensor = _scalar_sensor(
     name="Lateral acceleration",
     unit=UNIT_GRAVITY,
     precision=2,
+    extractor=_value_as_g,
 )
 
 LongitudinalAccelerationSensor = _scalar_sensor(
@@ -734,6 +747,7 @@ LongitudinalAccelerationSensor = _scalar_sensor(
     name="Longitudinal acceleration",
     unit=UNIT_GRAVITY,
     precision=2,
+    extractor=_value_as_g,
 )
 
 PackVoltageSensor = _scalar_sensor(
