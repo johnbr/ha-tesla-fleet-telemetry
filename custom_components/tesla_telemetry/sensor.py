@@ -179,6 +179,7 @@ async def async_setup_entry(
             PackPowerSensor(coordinator),
             ModuleTempMaxSensor(coordinator),
             ModuleTempMinSensor(coordinator),
+            AvgBatteryTempSensor(coordinator),
             BmsStateSensor(coordinator),
         ]
     )
@@ -842,6 +843,57 @@ class PackPowerSensor(_BaseTelemetrySensor):
             self._attr_native_value = None
             return
         self._attr_native_value = -(volts * amps) / 1000.0
+
+
+class AvgBatteryTempSensor(_BaseTelemetrySensor):
+    """Representative HV battery temperature: mean of the hottest and coldest
+    module.
+
+    Tesla doesn't stream a single pack temperature — only ``ModuleTempMax`` and
+    ``ModuleTempMin`` (the extremes across the pack).  Their mean is the most
+    meaningful "actual" pack temp.  Subscribes to both and recomputes whenever
+    either updates, rendering ``unavailable`` until both have arrived.
+    """
+
+    _attr_name = "Battery temperature (avg)"
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_suggested_display_precision = 1
+
+    def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.vin}_battery_temp_avg_telemetry"
+
+    async def async_added_to_hass(self) -> None:
+        self._recompute()
+        for signal in (SIGNAL_MODULE_TEMP_MAX, SIGNAL_MODULE_TEMP_MIN):
+            self.async_on_remove(
+                async_dispatcher_connect(
+                    self.hass,
+                    signal_dispatcher_topic(self._coordinator.vin, signal),
+                    self._on_either_sample,
+                )
+            )
+
+    @callback
+    def _on_either_sample(self, sample: SignalSample) -> None:
+        self._recompute()
+        if self.hass is not None:
+            self.async_write_ha_state()
+
+    def _recompute(self) -> None:
+        hi_sample = self._coordinator.get(SIGNAL_MODULE_TEMP_MAX)
+        lo_sample = self._coordinator.get(SIGNAL_MODULE_TEMP_MIN)
+        if hi_sample is None or lo_sample is None:
+            self._attr_native_value = None
+            return
+        hi = value_as_float(hi_sample.value)
+        lo = value_as_float(lo_sample.value)
+        if hi is None or lo is None:
+            self._attr_native_value = None
+            return
+        self._attr_native_value = (hi + lo) / 2.0
 
 
 class BmsStateSensor(_BaseTelemetrySensor):
