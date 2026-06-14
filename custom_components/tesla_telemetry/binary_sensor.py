@@ -19,6 +19,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
     DOMAIN,
@@ -136,8 +137,13 @@ async def async_setup_entry(
 # ---------------------------------------------------------------------------
 # Base
 # ---------------------------------------------------------------------------
-class _BaseTelemetryBinarySensor(BinarySensorEntity):
-    """Subscribe to one signal and pass each sample to ``_handle``."""
+class _BaseTelemetryBinarySensor(BinarySensorEntity, RestoreEntity):
+    """Subscribe to one signal and pass each sample to ``_handle``.
+
+    Inherits ``RestoreEntity`` so the last on/off state survives a restart —
+    the telemetry stream is push-on-change, so a signal would otherwise read
+    ``unknown`` until it next toggles.
+    """
 
     _attr_should_poll = False
     _attr_has_entity_name = True
@@ -151,6 +157,10 @@ class _BaseTelemetryBinarySensor(BinarySensorEntity):
         sample = self._coordinator.get(self._signal_name)
         if sample is not None:
             self._handle(sample)
+        else:
+            last = await self.async_get_last_state()
+            if last is not None and last.state in ("on", "off"):
+                self._attr_is_on = last.state == "on"
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass,

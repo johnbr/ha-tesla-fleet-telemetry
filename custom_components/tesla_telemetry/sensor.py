@@ -15,8 +15,8 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from homeassistant.components.sensor import (
+    RestoreSensor,
     SensorDeviceClass,
-    SensorEntity,
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -188,8 +188,13 @@ async def async_setup_entry(
 # ---------------------------------------------------------------------------
 # Base
 # ---------------------------------------------------------------------------
-class _BaseTelemetrySensor(SensorEntity):
-    """Subscribe to one signal and call `_handle` on every sample."""
+class _BaseTelemetrySensor(RestoreSensor):
+    """Subscribe to one signal and call `_handle` on every sample.
+
+    Inherits ``RestoreSensor`` so the last value survives a restart — the
+    telemetry stream is push-on-change, so slow signals (tire pressure,
+    odometer, etc.) would otherwise read ``unknown`` until they next change.
+    """
 
     _attr_should_poll = False
     _attr_has_entity_name = True
@@ -203,6 +208,8 @@ class _BaseTelemetrySensor(SensorEntity):
         sample = self._coordinator.get(self._signal_name)
         if sample is not None:
             self._handle(sample)
+        else:
+            await self._async_restore_last()
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass,
@@ -212,6 +219,16 @@ class _BaseTelemetrySensor(SensorEntity):
                 self._on_sample,
             )
         )
+
+    async def _async_restore_last(self) -> None:
+        """Restore the last native value across restarts.
+
+        Holds the stale-but-useful reading until fresh telemetry arrives;
+        a no-op when there's nothing stored (first run).
+        """
+        last = await self.async_get_last_sensor_data()
+        if last is not None and last.native_value is not None:
+            self._attr_native_value = last.native_value
 
     @callback
     def _on_sample(self, sample: SignalSample) -> None:
@@ -816,6 +833,8 @@ class PackPowerSensor(_BaseTelemetrySensor):
 
     async def async_added_to_hass(self) -> None:
         self._recompute()
+        if self._attr_native_value is None:
+            await self._async_restore_last()
         for signal in (SIGNAL_PACK_VOLTAGE, SIGNAL_PACK_CURRENT):
             self.async_on_remove(
                 async_dispatcher_connect(
@@ -867,6 +886,8 @@ class AvgBatteryTempSensor(_BaseTelemetrySensor):
 
     async def async_added_to_hass(self) -> None:
         self._recompute()
+        if self._attr_native_value is None:
+            await self._async_restore_last()
         for signal in (SIGNAL_MODULE_TEMP_MAX, SIGNAL_MODULE_TEMP_MIN):
             self.async_on_remove(
                 async_dispatcher_connect(

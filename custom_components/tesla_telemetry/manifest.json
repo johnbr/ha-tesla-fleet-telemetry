@@ -9,5 +9,5 @@
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/johnbr/ha-tesla-fleet-telemetry/issues",
   "requirements": ["cryptography>=42", "protobuf>=4.25,<8", "flatbuffers>=24"],
-  "version": "0.2.3"
+  "version": "0.2.4"
 }
