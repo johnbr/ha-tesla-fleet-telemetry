@@ -16,9 +16,11 @@ import logging
 
 from homeassistant.components.device_tracker import SourceType, TrackerEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.const import STATE_HOME, STATE_NOT_HOME
+from homeassistant.core import HomeAssistant, State, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
     DOMAIN,
@@ -51,8 +53,13 @@ async def async_setup_entry(
     )
 
 
-class _BaseTelemetryTracker(TrackerEntity):
-    """Shared plumbing — dispatcher subscription, lat/lon storage."""
+class _BaseTelemetryTracker(TrackerEntity, RestoreEntity):
+    """Shared plumbing — dispatcher subscription, lat/lon storage.
+
+    Inherits ``RestoreEntity`` so the last position survives a restart — the
+    location signal is push-on-change, so a parked car would otherwise report
+    an unknown position until it next moves.
+    """
 
     _attr_should_poll = False
     _attr_has_entity_name = True
@@ -86,6 +93,19 @@ class _BaseTelemetryTracker(TrackerEntity):
             )
         )
 
+    async def _async_restore_location(self) -> State | None:
+        """Restore the last lat/lon from saved attributes; returns the last
+        state so subclasses can also recover their state string."""
+        last = await self.async_get_last_state()
+        if last is None:
+            return None
+        lat = last.attributes.get("latitude")
+        lon = last.attributes.get("longitude")
+        if lat is not None and lon is not None:
+            self._latitude = lat
+            self._longitude = lon
+        return last
+
 
 class LocationTracker(_BaseTelemetryTracker):
     _attr_name = "Location"
@@ -95,6 +115,8 @@ class LocationTracker(_BaseTelemetryTracker):
         self._attr_unique_id = f"{coordinator.vin}_location_telemetry"
 
     async def async_added_to_hass(self) -> None:
+        if self._coordinator.get(SIGNAL_LOCATION) is None:
+            await self._async_restore_location()
         self._subscribe(SIGNAL_LOCATION, self._on_location)
 
     @callback
@@ -126,6 +148,21 @@ class RouteTracker(_BaseTelemetryTracker):
         return self._destination_name
 
     async def async_added_to_hass(self) -> None:
+        if (
+            self._coordinator.get(SIGNAL_DESTINATION_NAME) is None
+            and self._coordinator.get(SIGNAL_DESTINATION_LOCATION) is None
+        ):
+            last = await self._async_restore_location()
+            # Restore the destination name only when the saved state was a real
+            # place name, not a computed zone (home/not_home) or empty marker.
+            if last is not None and last.state not in (
+                STATE_HOME,
+                STATE_NOT_HOME,
+                "unknown",
+                "unavailable",
+                "",
+            ):
+                self._destination_name = last.state
         self._subscribe(SIGNAL_DESTINATION_NAME, self._on_name)
         self._subscribe(SIGNAL_DESTINATION_LOCATION, self._on_location)
 
