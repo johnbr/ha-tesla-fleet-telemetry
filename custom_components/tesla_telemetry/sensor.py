@@ -41,7 +41,6 @@ from .const import (
     SIGNAL_AC_CHARGING_ENERGY_IN,
     SIGNAL_AC_CHARGING_POWER,
     SIGNAL_BATTERY_LEVEL,
-    SIGNAL_BMS_STATE,
     SIGNAL_CHARGE_AMPS,
     SIGNAL_CHARGE_LIMIT_SOC,
     SIGNAL_CHARGE_RATE_MILES_PER_HOUR,
@@ -89,8 +88,6 @@ from .coordinator import (
     signal_dispatcher_topic,
 )
 from .values import (
-    BMS_STATE_OPTIONS,
-    value_as_bms_state,
     value_as_bool,
     value_as_charge_state,
     value_as_enum_name,
@@ -180,7 +177,6 @@ async def async_setup_entry(
             ModuleTempMaxSensor(coordinator),
             ModuleTempMinSensor(coordinator),
             AvgBatteryTempSensor(coordinator),
-            BmsStateSensor(coordinator),
         ]
     )
 
@@ -915,20 +911,3 @@ class AvgBatteryTempSensor(_BaseTelemetrySensor):
             self._attr_native_value = None
             return
         self._attr_native_value = (hi + lo) / 2.0
-
-
-class BmsStateSensor(_BaseTelemetrySensor):
-    """Battery management system state (standby/drive/charge/fault/etc)."""
-
-    _signal_name = SIGNAL_BMS_STATE
-    _attr_name = "BMS state"
-    _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = BMS_STATE_OPTIONS
-    _attr_state_class = None
-
-    def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.vin}_bms_state_telemetry"
-
-    def _handle(self, sample: SignalSample) -> None:
-        self._attr_native_value = value_as_bms_state(sample.value)

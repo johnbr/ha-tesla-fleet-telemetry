@@ -23,7 +23,6 @@ from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
     DOMAIN,
-    SIGNAL_BATTERY_HEATER_ON,
     SIGNAL_CHARGE_PORT_DOOR_OPEN,
     SIGNAL_CHARGING_CABLE_TYPE,
     SIGNAL_DETAILED_CHARGE_STATE,
@@ -129,7 +128,6 @@ async def async_setup_entry(
             HvacPowerBinarySensor(coordinator),
             SentryArmedBinarySensor(coordinator),
             UserPresentBinarySensor(coordinator),
-            BatteryHeaterBinarySensor(coordinator),
         ]
     )
 
@@ -373,11 +371,4 @@ UserPresentBinarySensor = _bool_binary_sensor(
     slug="user_present_telemetry",
     name="User present",
     device_class=BinarySensorDeviceClass.OCCUPANCY,
-)
-
-BatteryHeaterBinarySensor = _bool_binary_sensor(
-    signal=SIGNAL_BATTERY_HEATER_ON,
-    slug="battery_heater_telemetry",
-    name="Battery heater",
-    device_class=BinarySensorDeviceClass.HEAT,
 )

@@ -148,44 +148,6 @@ def value_charging_active(value: Any) -> bool | None:
     return name in ("DetailedChargeStateCharging", "DetailedChargeStateStarting")
 
 
-# Friendly mapping for the battery-management-system state enum (``BMSState``).
-# Exposed as the ENUM sensor state string.
-_BMS_STATE_FRIENDLY = {
-    "BMSStateUnknown": None,
-    "BMSStateStandby": "standby",
-    "BMSStateDrive": "drive",
-    "BMSStateSupport": "support",
-    "BMSStateCharge": "charge",
-    "BMSStateFEIM": "feim",
-    "BMSStateClearFault": "clear_fault",
-    "BMSStateFault": "fault",
-    "BMSStateWeld": "weld",
-    "BMSStateTest": "test",
-    "BMSStateSNA": None,
-}
-
-# Stable option list for the BMS-state ENUM sensor (excludes the None-mapped
-# Unknown/SNA sentinels).
-BMS_STATE_OPTIONS = [
-    "standby",
-    "drive",
-    "support",
-    "charge",
-    "feim",
-    "clear_fault",
-    "fault",
-    "weld",
-    "test",
-]
-
-
-def value_as_bms_state(value: Any) -> str | None:
-    name = value_as_enum_name(value)
-    if name is None:
-        return None
-    return _BMS_STATE_FRIENDLY.get(name, name)
-
-
 __all__ = [
     "value_as_float",
     "value_as_bool",
@@ -196,8 +158,6 @@ __all__ = [
     "value_is_window_open",
     "value_as_charge_state",
     "value_charging_active",
-    "value_as_bms_state",
-    "BMS_STATE_OPTIONS",
 ]
 
 

@@ -77,8 +77,6 @@ SIGNAL_PACK_VOLTAGE = "PackVoltage"
 SIGNAL_PACK_CURRENT = "PackCurrent"
 SIGNAL_MODULE_TEMP_MAX = "ModuleTempMax"
 SIGNAL_MODULE_TEMP_MIN = "ModuleTempMin"
-SIGNAL_BATTERY_HEATER_ON = "BatteryHeaterOn"
-SIGNAL_BMS_STATE = "BMSState"
 
 # Per-field intervals sent in fleet_telemetry_config (seconds). Tesla emits a
 # signal on change AND no more than once per the configured interval; it does
@@ -154,8 +152,6 @@ DEFAULT_INTERVALS_SECONDS: dict[str, int] = {
     SIGNAL_PACK_CURRENT: 5,
     SIGNAL_MODULE_TEMP_MAX: 30,
     SIGNAL_MODULE_TEMP_MIN: 30,
-    SIGNAL_BATTERY_HEATER_ON: 30,
-    SIGNAL_BMS_STATE: 10,
 }
 
 # Named interval presets.  ``high_rate`` rewrites Location/VehicleSpeed/Gear/
