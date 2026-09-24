@@ -1,6 +1,10 @@
 """Constants for the tesla_telemetry integration."""
 from __future__ import annotations
 
+import base64
+import binascii
+import json
+
 DOMAIN = "tesla_telemetry"
 
 # Telemetry signal names — must match enum names in
@@ -280,15 +284,7 @@ OAUTH_AUTHORIZE_URL = "https://auth.tesla.com/oauth2/v3/authorize"
 OAUTH_TOKEN_URL = TESLA_USER_TOKEN_URL
 OAUTH_SCOPES = ["openid", "offline_access", "vehicle_device_data"]
 
-# Partner OAuth (client_credentials grant) — needs an audience header
-# pointing at the regional Fleet API. Used for partner_accounts/register
-# and other partner-scoped calls.
-TESLA_PARTNER_TOKEN_URL = (
-    "https://fleet-auth.prd.vn.cloud.tesla.com/oauth2/v3/token"
-)
-
-# Region → Fleet API base URL. Default is North America. Add EU/CN if
-# the integration ever needs to support those accounts.
+# Region → Fleet API base URL. Default is North America.
 REGION_NA = "na"
 REGION_EU = "eu"
 REGION_CN = "cn"
@@ -298,6 +294,51 @@ FLEET_API_BASE_URLS: dict[str, str] = {
     REGION_CN: "https://fleet-api.prd.cn.vn.cloud.tesla.cn",
 }
 DEFAULT_REGION = REGION_NA
+
+# Partner OAuth (client_credentials grant). The endpoint is global — the
+# same host for every region (mirrors the tesla_fleet_api library HA core
+# uses); regional scoping comes from the `audience` in the request body,
+# which TeslaApi sets to the entry's Fleet API base URL. Used for
+# partner_accounts/register and other partner-scoped calls.
+TESLA_PARTNER_TOKEN_URL = (
+    "https://fleet-auth.prd.vn.cloud.tesla.com/oauth2/v3/token"
+)
+
+# Regions offered in the config flow. China is deliberately excluded (as
+# in HA core's tesla_fleet): it uses separate auth infrastructure and the
+# paths below are untested for it. The REGION_CN entry stays in
+# FLEET_API_BASE_URLS so the API client keeps validating it.
+SELECTABLE_REGIONS: tuple[str, ...] = (REGION_NA, REGION_EU)
+
+# Tesla access-token JWTs carry the account's operational region in the
+# `ou_code` claim (e.g. "NA", "EU"). The config flow compares it against
+# the user's region choice and logs a mismatch. Same claim HA core's
+# `tesla_fleet` integration uses for region detection.
+TOKEN_OU_CODES: dict[str, str] = {
+    "na": REGION_NA,
+    "eu": REGION_EU,
+    "cn": REGION_CN,
+}
+
+
+def region_from_access_token(token: str) -> str | None:
+    """Best-effort region detection from an access-token JWT payload.
+
+    Decodes the unverified JWT claims and maps Tesla's ``ou_code`` claim
+    to a region constant. Returns ``None`` when the claim is absent or
+    unknown — callers should fall back to ``DEFAULT_REGION``. Deliberately
+    no signature check: this is only ever a UX default, never a trust
+    decision.
+    """
+    try:
+        payload_b64 = token.split(".")[1]
+        payload = json.loads(
+            base64.urlsafe_b64decode(payload_b64 + "=" * (-len(payload_b64) % 4))
+        )
+        ou_code = str(payload.get("ou_code", "")).lower()
+    except (IndexError, ValueError, TypeError, binascii.Error):
+        return None
+    return TOKEN_OU_CODES.get(ou_code)
 
 # Buffer applied to OAuth `expires_in` so we refresh before Tesla considers
 # the token stale. Seconds.

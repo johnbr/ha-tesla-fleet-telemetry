@@ -303,6 +303,10 @@ class TeslaApi:
             return self._partner_token
 
     async def _refresh_partner_token(self) -> None:
+        # The client_credentials endpoint is global — same host for every
+        # region, mirroring the tesla_fleet_api library HA core uses. It's
+        # the `audience` in the body that scopes the partner token to our
+        # regional Fleet API server.
         body = {
             "grant_type": "client_credentials",
             "client_id": self._client_id,

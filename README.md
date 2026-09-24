@@ -82,8 +82,10 @@ Entity IDs follow the vehicle's name, e.g. `sensor.<vehicle>_speed`,
 
 * Home Assistant **2024.12** or later.
 * A **Tesla developer account** with a registered *partner application*
-  ([developer.tesla.com](https://developer.tesla.com/)). North America
-  accounts are supported today; EU/CN are not yet wired into the config flow.
+  ([developer.tesla.com](https://developer.tesla.com/)). North America and
+  Europe are supported — pick the region at the start of the config flow.
+  (China is excluded, as in HA core's tesla_fleet: separate infrastructure,
+  untested.)
 * An **EC P-256 (secp256r1) partner key pair**, with the public key hosted at
   `https://<partner-domain>/.well-known/appspecific/com.tesla.3p.public-key.pem`.
 * A **publicly reachable reverse proxy** (nginx assumed) that:

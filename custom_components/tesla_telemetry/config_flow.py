@@ -8,10 +8,12 @@ Uses HA's standard OAuth2 framework via ``application_credentials``:
   2. ``auth`` (provided by AbstractOAuth2FlowHandler) — bounce the user
      through Tesla's auth.tesla.com authorize URL and back. HA handles
      the code-for-token swap.
-  3. ``vehicle`` — pick the VIN this entry will track. Validated against
+  3. ``region`` — confirm the account's Fleet API region (NA/EU),
+     preselected from the ``ou_code`` claim in the access-token JWT.
+  4. ``vehicle`` — pick the VIN this entry will track. Validated against
      Tesla's `/api/1/vehicles` response and against ``async_set_unique_id``
      to prevent duplicate entries.
-  4. ``endpoint`` — public hostname, port, partner domain, proxy shared
+  5. ``endpoint`` — public hostname, port, partner domain, proxy shared
      secret, and the partner EC P-256 private key (PEM). These are
      deployment-wide; when adding a second vehicle the step is pre-filled
      from an existing entry.
@@ -48,8 +50,9 @@ from .const import (
     CONF_VIN,
     DEFAULT_REGION,
     DOMAIN,
-    FLEET_API_BASE_URLS,
     OAUTH_SCOPES,
+    SELECTABLE_REGIONS,
+    region_from_access_token,
 )
 from .signals import build_options_schema, parse_options_input
 from .tesla_api import TeslaApiError, TeslaAuthError, list_vehicles_with_token
@@ -88,24 +91,62 @@ class TeslaTelemetryOAuth2FlowHandler(
     ) -> TeslaTelemetryOptionsFlow:
         return TeslaTelemetryOptionsFlow()
 
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Flow entry point. Region is asked after OAuth: the authorize
+        request is region-independent, and the access token's ``ou_code``
+        claim then preselects the region for confirmation."""
+        return await self.async_step_pick_implementation()
+
+    async def async_step_region(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Confirm the account region. Preselected from the ``ou_code``
+        claim of the freshly minted access token (the same detection HA
+        core's tesla_fleet uses); the region selects the regional Fleet
+        API base URL used for every API call from here on (vehicle list,
+        telemetry config, partner registration)."""
+        if user_input is not None:
+            self._region = user_input[CONF_REGION]
+            return await self.async_step_vehicle()
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_REGION, default=self._region): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=list(SELECTABLE_REGIONS),
+                        translation_key="region",
+                        mode=selector.SelectSelectorMode.LIST,
+                    )
+                )
+            }
+        )
+        return self.async_show_form(step_id="region", data_schema=schema)
+
     @property
     def extra_authorize_data(self) -> dict[str, Any]:
-        # Tesla wants `audience` pointing at the regional Fleet API base
-        # URL on the authorize call. NA is the only region this
-        # integration currently supports — extend if needed.
-        return {
-            "scope": " ".join(OAUTH_SCOPES),
-            "audience": FLEET_API_BASE_URLS[DEFAULT_REGION],
-        }
+        # No `audience` on the authorize call. Per Tesla's docs it is
+        # required only on the partner client_credentials grant (where
+        # TeslaApi sends it, scoped to the entry's regional Fleet API
+        # base URL). User tokens minted without an audience work against
+        # every regional Fleet API — HA core's tesla_fleet and TeslaMate
+        # both authorize without one.
+        return {"scope": " ".join(OAUTH_SCOPES)}
 
     async def async_oauth_create_entry(
         self, data: dict[str, Any]
     ) -> ConfigFlowResult:
         """Hook called by AbstractOAuth2FlowHandler once OAuth completes.
-        Stash the token and continue to integration-specific steps before
-        actually creating the entry."""
+        Stash the token, preselect the region from the ``ou_code`` claim,
+        and continue to integration-specific steps before actually
+        creating the entry."""
         self._oauth_data = data
-        return await self.async_step_vehicle()
+        detected = region_from_access_token(
+            data["token"].get("access_token") or ""
+        )
+        if detected is not None:
+            self._region = detected
+        return await self.async_step_region()
 
     # -------------------- Step: vehicle --------------------
     async def async_step_vehicle(

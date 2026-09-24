@@ -8,6 +8,13 @@
       "auth": {
         "title": "Authorize with Tesla"
       },
+      "region": {
+        "title": "Region",
+        "description": "Tesla serves Fleet API accounts from regional endpoints. The region detected from your Tesla account is preselected — confirm it or correct it if needed.",
+        "data": {
+          "region": "Region"
+        }
+      },
       "vehicle": {
         "title": "Select vehicle",
         "description": "Choose the VIN this integration should track.",
@@ -102,6 +109,14 @@
             }
           }
         }
+      }
+    }
+  },
+  "selector": {
+    "region": {
+      "options": {
+        "na": "North America",
+        "eu": "Europe"
       }
     }
   }
