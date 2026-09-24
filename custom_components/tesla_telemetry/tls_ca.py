@@ -20,11 +20,8 @@ issuers without needing a manual `ca_pem:` override:
 Let's Encrypt retired its R10–R14 and E5–E9 intermediates: new
 issuances chain through the Gen-Y hierarchy (YE1/YE2 for ECDSA,
 YR1/YR2 for RSA), whose trust anchors are the self-signed ISRG Root
-YE / Root YR, cross-signed copies for validators that want them.
-  * USERTrust RSA Certification Authority — Sectigo/Comodo root, valid
-    through 2038-01-18. Anchors ZeroSSL, Sectigo, and many other
-    commercial CAs (chain: leaf → ZeroSSL/Sectigo intermediate →
-    Sectigo Public Server Authentication Root R46 → USERTrust RSA).
+YE / Root YR. The cross-signed copies are bundled too, for validators
+that want them.
 
 Deployments using a CA not anchored at one of these should pass
 `ca_pem:` on the bootstrap / resync service call to override.
