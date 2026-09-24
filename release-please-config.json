@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "include-v-in-tag": true,
+  "include-component-in-tag": false,
+  "packages": {
+    ".": {
+      "package-name": "ha-tesla-fleet-telemetry",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "custom_components/tesla_telemetry/manifest.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    }
+  }
+}
