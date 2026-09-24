@@ -29,7 +29,6 @@ jobs:
         uses: hacs/action@main
         with:
           category: integration
-          # The 'brands' check stays red until tesla_telemetry is merged
-          # into home-assistant/brands (a separate PR to that repo).
-          # Ignore it here so unrelated regressions remain visible.
-          ignore: brands
+          # No `ignore:`. The brands check is satisfied by the local
+          # custom_components/tesla_telemetry/brand/ icons, and HACS
+          # default requires every check to pass.
