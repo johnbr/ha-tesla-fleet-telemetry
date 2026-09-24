@@ -54,14 +54,6 @@
       "oauth_unknown_error": "Unknown OAuth error.",
       "no_vehicles": "Tesla returned no vehicles for this account.",
       "cannot_connect": "Could not reach Tesla. Check network connectivity and try again."
-    },
-    "selector": {
-      "region": {
-        "options": {
-          "na": "North America",
-          "eu": "Europe"
-        }
-      }
     }
   },
   "options": {
@@ -117,6 +109,14 @@
             }
           }
         }
+      }
+    }
+  },
+  "selector": {
+    "region": {
+      "options": {
+        "na": "North America",
+        "eu": "Europe"
       }
     }
   }
