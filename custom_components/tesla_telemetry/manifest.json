@@ -18,5 +18,5 @@
     "protobuf>=4.25,<8",
     "flatbuffers>=24"
   ],
-  "version": "0.7.0"
+  "version": "0.7.1"
 }
