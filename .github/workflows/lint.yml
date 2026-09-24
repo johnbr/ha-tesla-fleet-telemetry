@@ -13,6 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Run ruff
-        uses: astral-sh/ruff-action@v3
+        uses: astral-sh/ruff-action@v4.1.0
+        with:
+          # Pinned: an unpinned action installs the newest ruff, and 0.16
+          # widened the default rule set, turning CI red on unchanged code.
+          # Bump deliberately, fixing whatever the new version flags.
+          version: "0.16.9"

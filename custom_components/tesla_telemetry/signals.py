@@ -119,6 +119,7 @@ def build_options_schema(entry: Any) -> Any:
     the estimated-cost rate.
     """
     import voluptuous as vol
+
     from homeassistant import data_entry_flow
     from homeassistant.helpers import selector
 

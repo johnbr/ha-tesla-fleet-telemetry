@@ -90,8 +90,14 @@ DEFAULT_INTERVALS_SECONDS: dict[str, int] = {
     SIGNAL_CHARGING_CABLE_TYPE: 60,
     SIGNAL_TIME_TO_FULL_CHARGE: 30,
     SIGNAL_CHARGE_PORT_DOOR_OPEN: 5,
-    # battery / range — drifts slowly
-    SIGNAL_BATTERY_LEVEL: 30,
+    # battery / range — drifts slowly, EXCEPT the displayed pack percentage
+    # under fast DC charge, where it can step more than once per 30 s and the
+    # old ceiling was the thing making the dashboard SOC look stale. Push-on-
+    # change means the lower ceiling costs nothing while parked or driving: it
+    # only binds when the value is genuinely moving that fast. Kept in step
+    # with DCChargingPower above (also 10 s) so the power reading and the SOC
+    # it is moving arrive on the same cadence.
+    SIGNAL_BATTERY_LEVEL: 10,
     SIGNAL_SOC: 30,
     SIGNAL_EST_BATTERY_RANGE: 30,
     SIGNAL_RATED_RANGE: 60,

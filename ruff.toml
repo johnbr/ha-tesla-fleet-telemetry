@@ -5,3 +5,18 @@
 target-version = "py312"
 line-length = 88
 extend-exclude = ["custom_components/tesla_telemetry/proto"]
+
+[lint.isort]
+# Home Assistant convention: `homeassistant` imports get their own block
+# between third-party packages and this integration's relative imports.
+section-order = [
+  "future",
+  "standard-library",
+  "third-party",
+  "homeassistant",
+  "first-party",
+  "local-folder",
+]
+
+[lint.isort.sections]
+homeassistant = ["homeassistant"]
