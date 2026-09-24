@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.7.0...v0.7.1) (2026-09-24)
+
+
+### Bug Fixes
+
+* ship a brand icon so HA and HACS show one ([c1ad735](https://github.com/johnbr/ha-tesla-fleet-telemetry/commit/c1ad735175a38ab4f84a80cc6fc381008287ff81))
+
 ## [0.7.0](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.6.2...v0.7.0) (2026-09-24)
 
 
