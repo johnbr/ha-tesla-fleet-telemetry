@@ -11,8 +11,9 @@ only its functional name (e.g. "Speed").
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Any, Callable
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any, ClassVar
 
 from homeassistant.components.sensor import (
     RestoreSensor,
@@ -39,12 +40,12 @@ from .const import (
     CONF_COST_PER_MILLION_SIGNALS,
     DEFAULT_COST_PER_MILLION_SIGNALS,
     DOMAIN,
-    SIGNAL_COUNT_FLUSH_INTERVAL_SECONDS,
     SIGNAL_AC_CHARGING_ENERGY_IN,
     SIGNAL_AC_CHARGING_POWER,
     SIGNAL_BATTERY_LEVEL,
     SIGNAL_CHARGE_LIMIT_SOC,
     SIGNAL_CHARGING_CABLE_TYPE,
+    SIGNAL_COUNT_FLUSH_INTERVAL_SECONDS,
     SIGNAL_DC_CHARGING_ENERGY_IN,
     SIGNAL_DC_CHARGING_POWER,
     SIGNAL_DETAILED_CHARGE_STATE,
@@ -278,7 +279,7 @@ class TimeToArrivalSensor(_BaseTelemetrySensor):
             return
         ref = sample.payload_created_at or sample.received_at
         self._attr_native_value = datetime.fromtimestamp(
-            ref + minutes * 60, tz=timezone.utc
+            ref + minutes * 60, tz=UTC
         )
 
 
@@ -289,7 +290,7 @@ class GearSensor(_BaseTelemetrySensor):
     _attr_name = "Gear"
     _attr_state_class = None
 
-    _GEAR_MAP = {
+    _GEAR_MAP: ClassVar[dict[str, str | None]] = {
         "ShiftStateP": "P",
         "ShiftStateR": "R",
         "ShiftStateN": "N",
@@ -360,7 +361,9 @@ class ChargingStateSensor(_BaseTelemetrySensor):
     _signal_name = SIGNAL_DETAILED_CHARGE_STATE
     _attr_name = "Charging state"
     _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = [
+    # HA declares _attr_options as a per-instance attribute, so it can't
+    # be a ClassVar; this list is never mutated.
+    _attr_options = [  # noqa: RUF012
         "disconnected",
         "no_power",
         "starting",
@@ -427,7 +430,7 @@ class FastChargerPresentSensor(_BaseTelemetrySensor):
     _attr_name = "Fast charger type"
     _attr_state_class = None
 
-    _MAP = {
+    _MAP: ClassVar[dict[str, str | None]] = {
         "FastChargerUnknown": None,
         "FastChargerSupercharger": "Supercharger",
         "FastChargerCHAdeMO": "CHAdeMO",
@@ -459,7 +462,7 @@ class ChargingCableTypeSensor(_BaseTelemetrySensor):
     _attr_name = "Charging cable"
     _attr_state_class = None
 
-    _MAP = {
+    _MAP: ClassVar[dict[str, str | None]] = {
         "CableTypeUnknown": None,
         "CableTypeIEC": "IEC",
         "CableTypeSAE": "SAE",

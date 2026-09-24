@@ -42,7 +42,7 @@ class TeslaTelemetryView(HomeAssistantView):
 
     def __init__(
         self,
-        coordinators_by_vin: dict[str, "TeslaTelemetryCoordinator"],
+        coordinators_by_vin: dict[str, TeslaTelemetryCoordinator],
         proxy_secret: str,
     ) -> None:
         self._coordinators = coordinators_by_vin
@@ -116,7 +116,7 @@ def _vin_from_subject_dn(dn: str) -> str:
 
 
 def _process_envelope(
-    wire: bytes, coordinator: "TeslaTelemetryCoordinator"
+    wire: bytes, coordinator: TeslaTelemetryCoordinator
 ) -> bytes | None:
     """Parse a vehicle->server envelope, dispatch its data, return an ack."""
     try:
@@ -158,7 +158,7 @@ def _process_envelope(
 
 
 def _dispatch_vehicle_data(
-    inner: bytes, coordinator: "TeslaTelemetryCoordinator"
+    inner: bytes, coordinator: TeslaTelemetryCoordinator
 ) -> None:
     try:
         payload = vdp.Payload()
