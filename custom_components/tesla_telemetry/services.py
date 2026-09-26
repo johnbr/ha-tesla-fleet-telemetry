@@ -14,6 +14,10 @@ auto-resolves when there's exactly one entry configured):
   * ``dump_public_key``          — emits the EC P-256 public key derived
     from the configured private key, ready to host at the partner
     domain's ``.well-known`` path. Returns the PEM as a service response.
+  * ``navigate``                 — sends a destination (free text, or
+    coordinates) to the car's navigation. The integration's only write to
+    the vehicle; needs the ``vehicle_cmds`` scope and a vehicle that accepts
+    unsigned Fleet API commands.
 """
 from __future__ import annotations
 
@@ -25,6 +29,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import ATTR_LATITUDE, ATTR_LONGITUDE
 from homeassistant.core import (
     HomeAssistant,
     ServiceCall,
@@ -33,8 +38,10 @@ from homeassistant.core import (
     callback,
 )
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import async_track_time_interval
 
+from .commands import NAV_ORDERS, CommandRefused
 from .const import (
     AUTO_RESYNC_CHECK_INTERVAL_SECONDS,
     AUTO_RESYNC_MAX_AGE_SECONDS,
@@ -49,7 +56,7 @@ from .const import (
     INTERVAL_PRESET_OVERRIDES,
 )
 from .signals import resolve_effective_intervals
-from .tesla_api import TelemetryConfig, TelemetryFieldConfig, TeslaApi
+from .tesla_api import TelemetryConfig, TelemetryFieldConfig, TeslaApi, TeslaApiError
 from .tls_ca import DEFAULT_CA_BUNDLE_PEM
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,11 +66,14 @@ SERVICE_RESYNC = "resync_telemetry_config"
 SERVICE_DUMP_PUBLIC_KEY = "dump_public_key"
 SERVICE_GET_CONFIG = "get_telemetry_config"
 SERVICE_SET_INTERVAL_PRESET = "set_interval_preset"
+SERVICE_NAVIGATE = "navigate"
 
 ATTR_ENTRY_ID = "entry_id"
 ATTR_CA_PEM = "ca_pem"
 ATTR_REGISTER_PARTNER = "register_partner_domain"
 ATTR_PRESET = "preset"
+ATTR_DESTINATION = "destination"
+ATTR_ORDER = "order"
 
 _BOOTSTRAP_SCHEMA = vol.Schema(
     {
@@ -90,6 +100,23 @@ _SET_PRESET_SCHEMA = vol.Schema(
         vol.Required(ATTR_PRESET): vol.In(list(INTERVAL_PRESET_OVERRIDES)),
         vol.Optional(ATTR_CA_PEM): str,
     }
+)
+
+# Exactly one of `destination` (free text) or latitude+longitude.
+_NAVIGATE_SCHEMA = vol.All(
+    vol.Schema(
+        {
+            vol.Optional(ATTR_ENTRY_ID): str,
+            vol.Optional(ATTR_DESTINATION): cv.string,
+            vol.Inclusive(ATTR_LATITUDE, "coordinates"): cv.latitude,
+            vol.Inclusive(ATTR_LONGITUDE, "coordinates"): cv.longitude,
+            vol.Optional(ATTR_ORDER, default=0): vol.All(
+                vol.Coerce(int), vol.In(NAV_ORDERS)
+            ),
+        }
+    ),
+    cv.has_at_least_one_key(ATTR_DESTINATION, ATTR_LATITUDE),
+    cv.has_at_most_one_key(ATTR_DESTINATION, ATTR_LATITUDE),
 )
 
 
@@ -257,6 +284,58 @@ async def _set_interval_preset_handler(call: ServiceCall) -> ServiceResponse:
     }
 
 
+def _command_error_message(err: TeslaApiError) -> str:
+    """Turn a failed command call into something actionable."""
+    body = str(err.body or err)[:300]
+    if err.status == 408:
+        return "the car is asleep or offline (Tesla 408) — wake it and retry"
+    if "command protocol" in body.lower():
+        return (
+            "this vehicle only accepts signed commands (Tesla Vehicle Command "
+            "Protocol), which this integration does not implement"
+        )
+    if err.status == 403:
+        return (
+            "Tesla refused the command (403) — the token most likely lacks the "
+            "vehicle_cmds scope, which this integration's setup does not request "
+            f"(see the README's navigate section). Tesla said: {body}"
+        )
+    return f"Tesla API error {err.status}: {body}"
+
+
+async def _navigate_handler(call: ServiceCall) -> ServiceResponse:
+    """Send a destination to the car's navigation.
+
+    The destination is deliberately not logged above debug level: it is
+    often someone else's address.
+    """
+    hass = call.hass
+    entry = _resolve_entry(hass, call.data.get(ATTR_ENTRY_ID))
+    api = _entry_api(hass, entry)
+    vin = entry.data[CONF_VIN]
+    try:
+        if ATTR_DESTINATION in call.data:
+            method = "navigation_request"
+            result = await api.navigation_request(vin, call.data[ATTR_DESTINATION])
+        else:
+            method = "navigation_gps_request"
+            result = await api.navigation_gps_request(
+                vin,
+                call.data[ATTR_LATITUDE],
+                call.data[ATTR_LONGITUDE],
+                call.data[ATTR_ORDER],
+            )
+    except ValueError as err:
+        raise ServiceValidationError(str(err)) from err
+    except CommandRefused as err:
+        raise HomeAssistantError(f"the car refused the destination: {err}") from err
+    except TeslaApiError as err:
+        raise HomeAssistantError(_command_error_message(err)) from err
+    _LOGGER.info("tesla_telemetry: %s delivered to vin=%s", method, vin)
+    _LOGGER.debug("tesla_telemetry: %s payload %s", method, dict(call.data))
+    return {"vin": vin, "method": method, "result": result}
+
+
 async def _dump_public_key_handler(call: ServiceCall) -> ServiceResponse:
     hass = call.hass
     entry = _resolve_entry(hass, call.data.get(ATTR_ENTRY_ID))
@@ -330,6 +409,14 @@ def async_register_services(hass: HomeAssistant) -> None:
             SERVICE_SET_INTERVAL_PRESET,
             _set_interval_preset_handler,
             schema=_SET_PRESET_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+    if not hass.services.has_service(DOMAIN, SERVICE_NAVIGATE):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_NAVIGATE,
+            _navigate_handler,
+            schema=_NAVIGATE_SCHEMA,
             supports_response=SupportsResponse.OPTIONAL,
         )
 

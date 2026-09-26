@@ -120,3 +120,65 @@ set_interval_preset:
       selector:
         text:
           multiline: true
+
+navigate:
+  name: Send a destination to the car
+  description: >
+    Sends a destination to the vehicle's navigation — either free text, which
+    the car looks up itself exactly as when a location is shared from the
+    Tesla phone app, or coordinates. Give one or the other. Needs the
+    vehicle_cmds scope, an awake car, and a vehicle that accepts unsigned
+    Fleet API commands (pre-2021 Model S/X).
+  fields:
+    entry_id:
+      name: Config entry
+      required: false
+      selector:
+        config_entry:
+          integration: tesla_telemetry
+    destination:
+      name: Destination
+      description: >
+        An address, a place name, or "place, city". Leave empty when sending
+        coordinates.
+      required: false
+      example: "1 Tesla Road, Austin, TX"
+      selector:
+        text:
+    latitude:
+      name: Latitude
+      description: Use with longitude instead of a text destination.
+      required: false
+      selector:
+        number:
+          min: -90
+          max: 90
+          step: any
+          mode: box
+    longitude:
+      name: Longitude
+      required: false
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: any
+          mode: box
+    order:
+      name: Trip order
+      description: >
+        Coordinates only. 0 lets the car decide, 1 replaces the current trip,
+        2 adds the destination as the next stop, 3 adds it as the last stop.
+      required: false
+      default: 0
+      selector:
+        select:
+          options:
+            - label: Car decides
+              value: "0"
+            - label: Replace the trip
+              value: "1"
+            - label: Next stop
+              value: "2"
+            - label: Last stop
+              value: "3"

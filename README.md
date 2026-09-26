@@ -18,8 +18,9 @@ locks, charging state) arrive the moment they change.
 > integration instead.
 
 This integration **complements** `tesla_fleet`: run both side by side and the
-telemetry entities give you a real-time mirror of the polled ones. It does not
-send commands to the vehicle — it is read-only.
+telemetry entities give you a real-time mirror of the polled ones. It is
+read-only apart from one command: `tesla_telemetry.navigate`, which sends a
+destination to the car's navigation (see [Services](#services)).
 
 ## Entities
 
@@ -217,6 +218,29 @@ its own Home Assistant device with its own entities. Service calls take an
 | `tesla_telemetry.get_telemetry_config` | Fetch Tesla's current config for the VIN — check `synced`. |
 | `tesla_telemetry.dump_public_key` | Emit the partner public key PEM, ready to host at `.well-known`. |
 | `tesla_telemetry.set_interval_preset` | Switch streaming intervals between `default` and `high_rate` (~1 s location/speed). |
+| `tesla_telemetry.navigate` | Send a destination to the car's navigation: free text (`destination`) or `latitude`/`longitude`. |
+
+`navigate` is the integration's only write to the vehicle. Free text goes out
+as Tesla's `navigation_request`, the same command as sharing a location from
+the Tesla phone app, so the car looks the text up itself; coordinates go out as
+`navigation_gps_request`, with an optional `order` (0 = car decides, 1 = replace
+the trip, 2 = next stop, 3 = last stop). It needs:
+
+* the **`vehicle_cmds` scope** in the integration's token. Setup requests
+  only `vehicle_device_data`, but Tesla issues the token with every scope the
+  account has already granted that developer app — observed with a grant made
+  through HA's `tesla_fleet`, which requests `vehicle_cmds`, using the same
+  app. Without it, `navigate` fails with a 403 naming the missing scope.
+* a vehicle that accepts **unsigned Fleet API commands**, i.e. pre-2021
+  Model S/X. Newer vehicles require Tesla's signed Vehicle Command Protocol,
+  which this integration does not implement.
+* an **awake** car. An asleep car answers 408.
+
+```yaml
+action: tesla_telemetry.navigate
+data:
+  destination: "1 Tesla Road, Austin, TX"
+```
 
 The telemetry configuration expires on Tesla's side after roughly 30 days. The
 integration checks daily and re-pushes automatically when the last sync is

@@ -14,6 +14,11 @@ registration endpoint (used once during onboarding).
   * POST /api/1/vehicles/fleet_telemetry_config_jws — push our config
   * DELETE /api/1/vehicles/{vin}/fleet_telemetry_config
   * POST /api/1/partner_accounts                 — register partner domain
+  * POST /api/1/vehicles/{vin}/command/navigation_request
+  * POST /api/1/vehicles/{vin}/command/navigation_gps_request
+                                                 — send a destination to the
+                                                   car (the one write; needs
+                                                   the ``vehicle_cmds`` scope)
 """
 from __future__ import annotations
 
@@ -28,6 +33,12 @@ import aiohttp
 
 from homeassistant.helpers.config_entry_oauth2_flow import OAuth2Session
 
+from .commands import (
+    DEFAULT_LOCALE,
+    check_command_result,
+    navigation_gps_body,
+    navigation_request_body,
+)
 from .const import (
     DEFAULT_REGION,
     FLEET_API_BASE_URLS,
@@ -209,6 +220,30 @@ class TeslaApi:
             "POST", "/api/1/partner_accounts", json={"domain": domain}
         )
         return dict(data.get("response") or {})
+
+    async def navigation_request(
+        self, vin: str, destination: str, *, locale: str = DEFAULT_LOCALE
+    ) -> dict[str, Any]:
+        """Send free-text destination to the car, which geocodes it itself.
+        Raises ``CommandRefused`` if the car answers ``result: false``."""
+        data = await self._user_request(
+            "POST",
+            f"/api/1/vehicles/{vin}/command/navigation_request",
+            json=navigation_request_body(destination, locale=locale),
+        )
+        return check_command_result(data)
+
+    async def navigation_gps_request(
+        self, vin: str, latitude: float, longitude: float, order: int = 0
+    ) -> dict[str, Any]:
+        """Send coordinates to the car's navigation. Raises
+        ``CommandRefused`` if the car answers ``result: false``."""
+        data = await self._user_request(
+            "POST",
+            f"/api/1/vehicles/{vin}/command/navigation_gps_request",
+            json=navigation_gps_body(latitude, longitude, order),
+        )
+        return check_command_result(data)
 
     # ------------------------------------------------------------------
     # Internals
