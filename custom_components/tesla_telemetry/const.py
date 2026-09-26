@@ -69,9 +69,13 @@ DEFAULT_INTERVALS_SECONDS: dict[str, int] = {
     SIGNAL_LOCATION: 5,
     SIGNAL_VEHICLE_SPEED: 5,
     SIGNAL_GEAR: 5,
-    # navigation — only meaningful while a route is active
-    SIGNAL_DESTINATION_NAME: 30,
-    SIGNAL_DESTINATION_LOCATION: 30,
+    # navigation — only meaningful while a route is active. The destination
+    # itself changes only when a route is set or cleared (a handful of times
+    # a trip), so 1 s costs nothing in signals and gets a newly set route —
+    # including one sent by the `navigate` service — to HA at once. The
+    # arrival countdowns tick all through a drive, so they stay throttled.
+    SIGNAL_DESTINATION_NAME: 1,
+    SIGNAL_DESTINATION_LOCATION: 1,
     SIGNAL_MILES_TO_ARRIVAL: 15,
     SIGNAL_MINUTES_TO_ARRIVAL: 15,
     # charging — fluctuates while charging, idle otherwise.
