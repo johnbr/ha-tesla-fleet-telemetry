@@ -284,6 +284,20 @@ OAUTH_AUTHORIZE_URL = "https://auth.tesla.com/oauth2/v3/authorize"
 OAUTH_TOKEN_URL = TESLA_USER_TOKEN_URL
 OAUTH_SCOPES = ["openid", "offline_access", "vehicle_device_data"]
 
+# Vehicle commands (today only the `navigate` service) are OPT-IN per entry:
+# setup requests read-only scopes, and turning this option on is what adds
+# `vehicle_cmds` — via a re-auth when the entry's token doesn't carry it yet.
+CONF_ALLOW_VEHICLE_COMMANDS = "allow_vehicle_commands"
+DEFAULT_ALLOW_VEHICLE_COMMANDS = False
+VEHICLE_COMMANDS_SCOPE = "vehicle_cmds"
+
+
+def oauth_scopes(allow_vehicle_commands: bool = False) -> list[str]:
+    """The scopes to request on the authorize call for an entry."""
+    if allow_vehicle_commands:
+        return [*OAUTH_SCOPES, VEHICLE_COMMANDS_SCOPE]
+    return list(OAUTH_SCOPES)
+
 # Region → Fleet API base URL. Default is North America.
 REGION_NA = "na"
 REGION_EU = "eu"
@@ -330,15 +344,43 @@ def region_from_access_token(token: str) -> str | None:
     no signature check: this is only ever a UX default, never a trust
     decision.
     """
+    claims = _jwt_claims(token)
+    if claims is None:
+        return None
+    return TOKEN_OU_CODES.get(str(claims.get("ou_code", "")).lower())
+
+
+def scopes_from_access_token(token: str) -> frozenset[str] | None:
+    """The scopes an access-token JWT carries (its ``scp`` claim), or
+    ``None`` when they can't be read.
+
+    Tesla issues a token with every scope the account has granted the
+    developer app — not just the ones this integration asked for — so the
+    token, not ``oauth_scopes()``, is what says whether commands will be
+    accepted. Unverified decode, like ``region_from_access_token``: it only
+    decides whether to ask for a re-auth, never a trust decision.
+    """
+    claims = _jwt_claims(token)
+    if claims is None:
+        return None
+    scp = claims.get("scp")
+    if isinstance(scp, str):
+        return frozenset(scp.split())
+    if isinstance(scp, list):
+        return frozenset(str(s) for s in scp)
+    return None
+
+
+def _jwt_claims(token: str) -> dict | None:
+    """Decode a JWT's payload without verifying it; ``None`` if malformed."""
     try:
         payload_b64 = token.split(".")[1]
-        payload = json.loads(
+        claims = json.loads(
             base64.urlsafe_b64decode(payload_b64 + "=" * (-len(payload_b64) % 4))
         )
-        ou_code = str(payload.get("ou_code", "")).lower()
-    except (IndexError, ValueError, TypeError, binascii.Error):
+    except (IndexError, ValueError, TypeError, AttributeError, binascii.Error):
         return None
-    return TOKEN_OU_CODES.get(ou_code)
+    return claims if isinstance(claims, dict) else None
 
 # Buffer applied to OAuth `expires_in` so we refresh before Tesla considers
 # the token stale. Seconds.

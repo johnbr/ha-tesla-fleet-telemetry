@@ -87,3 +87,48 @@ def test_malformed_tokens_return_none() -> None:
     assert const.region_from_access_token("") is None
     assert const.region_from_access_token("not-a-jwt") is None
     assert const.region_from_access_token("a.!!!.c") is None  # bad base64/json
+
+
+def test_non_object_payload_is_not_a_region() -> None:
+    # A payload that is valid JSON but not an object used to raise
+    # AttributeError out of the decode; the shared decoder now rejects it.
+    header = base64.urlsafe_b64encode(b'{"alg":"RS256"}').rstrip(b"=").decode()
+    payload = base64.urlsafe_b64encode(b'["na"]').rstrip(b"=").decode()
+    assert const.region_from_access_token(f"{header}.{payload}.sig") is None
+
+
+# ---------------------------------------------------------------------------
+# vehicle-command scopes (the "Allow vehicle commands" option)
+# ---------------------------------------------------------------------------
+def test_oauth_scopes_are_read_only_by_default() -> None:
+    assert const.oauth_scopes() == const.OAUTH_SCOPES
+    assert const.VEHICLE_COMMANDS_SCOPE not in const.oauth_scopes(False)
+    assert const.DEFAULT_ALLOW_VEHICLE_COMMANDS is False
+
+
+def test_oauth_scopes_add_vehicle_cmds_when_allowed() -> None:
+    scopes = const.oauth_scopes(True)
+    assert scopes == [*const.OAUTH_SCOPES, "vehicle_cmds"]
+    # The module-level list is not mutated by asking for the wider set.
+    assert "vehicle_cmds" not in const.OAUTH_SCOPES
+
+
+def test_scopes_from_access_token_list_claim() -> None:
+    token = _make_token({"scp": ["openid", "vehicle_device_data", "vehicle_cmds"]})
+    assert const.scopes_from_access_token(token) == frozenset(
+        {"openid", "vehicle_device_data", "vehicle_cmds"}
+    )
+
+
+def test_scopes_from_access_token_string_claim() -> None:
+    token = _make_token({"scp": "openid vehicle_device_data"})
+    assert const.scopes_from_access_token(token) == frozenset(
+        {"openid", "vehicle_device_data"}
+    )
+
+
+def test_scopes_from_access_token_unreadable() -> None:
+    assert const.scopes_from_access_token(_make_token({"ou_code": "NA"})) is None
+    assert const.scopes_from_access_token(_make_token({"scp": 42})) is None
+    assert const.scopes_from_access_token("not-a-jwt") is None
+    assert const.scopes_from_access_token("") is None
