@@ -101,3 +101,9 @@ def test_check_command_result_refused(data, reason) -> None:
         commands.check_command_result(data)
     if reason is not None:
         assert info.value.reason == reason
+
+
+def test_navigation_request_body_locale() -> None:
+    body = commands.navigation_request_body("Brandenburger Tor", locale="de-DE")
+    assert body["locale"] == "de-DE"
+    assert commands.navigation_request_body("x")["locale"] == commands.DEFAULT_LOCALE

@@ -19,8 +19,9 @@ locks, charging state) arrive the moment they change.
 
 This integration **complements** `tesla_fleet`: run both side by side and the
 telemetry entities give you a real-time mirror of the polled ones. It is
-read-only apart from one command: `tesla_telemetry.navigate`, which sends a
-destination to the car's navigation (see [Services](#services)).
+read-only apart from one opt-in command, `tesla_telemetry.navigate`, which
+sends a destination to the car's navigation and is off until you enable it
+(see [Services](#services)).
 
 ## Entities
 
@@ -218,19 +219,25 @@ its own Home Assistant device with its own entities. Service calls take an
 | `tesla_telemetry.get_telemetry_config` | Fetch Tesla's current config for the VIN — check `synced`. |
 | `tesla_telemetry.dump_public_key` | Emit the partner public key PEM, ready to host at `.well-known`. |
 | `tesla_telemetry.set_interval_preset` | Switch streaming intervals between `default` and `high_rate` (~1 s location/speed). |
-| `tesla_telemetry.navigate` | Send a destination to the car's navigation: free text (`destination`) or `latitude`/`longitude`. |
+| `tesla_telemetry.navigate` | Send a destination to the car's navigation: free text (`destination`) or `latitude`/`longitude`. Off until *Allow vehicle commands* is turned on in the options. |
 
-`navigate` is the integration's only write to the vehicle. Free text goes out
-as Tesla's `navigation_request`, the same command as sharing a location from
-the Tesla phone app, so the car looks the text up itself; coordinates go out as
-`navigation_gps_request`, with an optional `order` (0 = car decides, 1 = replace
-the trip, 2 = next stop, 3 = last stop). It needs:
+`navigate` is the integration's only write to the vehicle, and it is **off
+unless you turn it on**: *Settings → Devices & services → Tesla Fleet Telemetry
+→ Configure → Vehicle commands → Allow vehicle commands*. Free text goes out as
+Tesla's `navigation_request`, the same command as sharing a location from the
+Tesla phone app, so the car looks the text up itself (`locale`, default
+`en-US`, sets the language it reads it in); coordinates go out as
+`navigation_gps_request`, with an optional `order` (0 = car decides, 1 =
+replace the trip, 2 = next stop, 3 = last stop). It needs:
 
-* the **`vehicle_cmds` scope** in the integration's token. Setup requests
-  only `vehicle_device_data`, but Tesla issues the token with every scope the
-  account has already granted that developer app — observed with a grant made
-  through HA's `tesla_fleet`, which requests `vehicle_cmds`, using the same
-  app. Without it, `navigate` fails with a 403 naming the missing scope.
+* the **`vehicle_cmds` scope** in the entry's token. Setup asks Tesla only for
+  read access (`vehicle_device_data`); turning the option on checks the token
+  and, if the scope is missing, starts a **re-authentication** (Settings →
+  Devices & services shows it) that asks for `vehicle_cmds` too. Your Tesla
+  developer app must be approved for vehicle commands. Tesla issues a token
+  with every scope the account has granted that app, so an account that
+  authorized the same app through HA's `tesla_fleet` may already have it and
+  need no re-auth.
 * a vehicle that accepts **unsigned Fleet API commands**, i.e. pre-2021
   Model S/X. Newer vehicles require Tesla's signed Vehicle Command Protocol,
   which this integration does not implement.

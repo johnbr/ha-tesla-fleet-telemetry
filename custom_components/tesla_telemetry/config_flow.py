@@ -21,17 +21,25 @@ Uses HA's standard OAuth2 framework via ``application_credentials``:
 Each integration goes through OAuth independently and gets its own
 refresh-token chain from Tesla — no more rotation race with tesla_fleet.
 One config entry is created per vehicle (VIN), each its own HA device.
+
+Re-auth (``reauth`` → ``reauth_confirm`` → the same OAuth steps) replaces
+only the token. It exists for the "Allow vehicle commands" option: setup
+asks Tesla for read-only scopes, and a re-auth of an entry with that
+option on asks for ``vehicle_cmds`` as well.
 """
 from __future__ import annotations
 
 import logging
 import secrets
+from collections.abc import Mapping
 from typing import Any
 
 import aiohttp
 import voluptuous as vol
 
+from homeassistant import data_entry_flow
 from homeassistant.config_entries import (
+    SOURCE_REAUTH,
     ConfigEntry,
     ConfigFlowResult,
     OptionsFlow,
@@ -40,6 +48,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import aiohttp_client, config_entry_oauth2_flow, selector
 
 from .const import (
+    CONF_ALLOW_VEHICLE_COMMANDS,
     CONF_HOSTNAME,
     CONF_PARTNER_DOMAIN,
     CONF_PORT,
@@ -48,10 +57,11 @@ from .const import (
     CONF_REGION,
     CONF_VEHICLE_NAME,
     CONF_VIN,
+    DEFAULT_ALLOW_VEHICLE_COMMANDS,
     DEFAULT_REGION,
     DOMAIN,
-    OAUTH_SCOPES,
     SELECTABLE_REGIONS,
+    oauth_scopes,
     region_from_access_token,
 )
 from .signals import build_options_schema, parse_options_input
@@ -131,7 +141,35 @@ class TeslaTelemetryOAuth2FlowHandler(
         # base URL). User tokens minted without an audience work against
         # every regional Fleet API — HA core's tesla_fleet and TeslaMate
         # both authorize without one.
-        return {"scope": " ".join(OAUTH_SCOPES)}
+        #
+        # Read-only scopes unless this is a re-auth of an entry whose "Allow
+        # vehicle commands" option is on — the one way `vehicle_cmds` is
+        # ever requested.
+        allow = False
+        if self.source == SOURCE_REAUTH:
+            allow = bool(
+                self._get_reauth_entry().options.get(
+                    CONF_ALLOW_VEHICLE_COMMANDS, DEFAULT_ALLOW_VEHICLE_COMMANDS
+                )
+            )
+        return {"scope": " ".join(oauth_scopes(allow))}
+
+    async def async_step_reauth(
+        self, entry_data: Mapping[str, Any]
+    ) -> ConfigFlowResult:
+        """Started by the integration when an entry's token lacks a scope it
+        needs (see ``__init__._async_check_command_scope``), or by HA."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        if user_input is None:
+            return self.async_show_form(
+                step_id="reauth_confirm",
+                description_placeholders={"name": self._get_reauth_entry().title},
+            )
+        return await self.async_step_user()
 
     async def async_oauth_create_entry(
         self, data: dict[str, Any]
@@ -139,7 +177,10 @@ class TeslaTelemetryOAuth2FlowHandler(
         """Hook called by AbstractOAuth2FlowHandler once OAuth completes.
         Stash the token, preselect the region from the ``ou_code`` claim,
         and continue to integration-specific steps before actually
-        creating the entry."""
+        creating the entry. A re-auth instead swaps the token into the
+        existing entry, once the new grant is shown to reach its vehicle."""
+        if self.source == SOURCE_REAUTH:
+            return await self._async_finish_reauth(data)
         self._oauth_data = data
         detected = region_from_access_token(
             data["token"].get("access_token") or ""
@@ -147,6 +188,33 @@ class TeslaTelemetryOAuth2FlowHandler(
         if detected is not None:
             self._region = detected
         return await self.async_step_region()
+
+    async def _async_finish_reauth(
+        self, data: dict[str, Any]
+    ) -> ConfigFlowResult:
+        entry = self._get_reauth_entry()
+        session = aiohttp_client.async_get_clientsession(self.hass)
+        try:
+            vehicles = await list_vehicles_with_token(
+                session,
+                data["token"].get("access_token") or "",
+                entry.data.get(CONF_REGION, DEFAULT_REGION),
+            )
+        except TeslaAuthError:
+            return self.async_abort(reason="oauth_unauthorized")
+        except (TimeoutError, TeslaApiError, aiohttp.ClientError) as err:
+            _LOGGER.warning("tesla_telemetry: reauth list_vehicles failed: %s", err)
+            return self.async_abort(reason="cannot_connect")
+        # A different Tesla account would silently orphan this vehicle.
+        if not any(v.get("vin") == entry.data[CONF_VIN] for v in vehicles):
+            return self.async_abort(reason="reauth_wrong_account")
+        return self.async_update_reload_and_abort(
+            entry,
+            data_updates={
+                "auth_implementation": data["auth_implementation"],
+                "token": data["token"],
+            },
+        )
 
     # -------------------- Step: vehicle --------------------
     async def async_step_vehicle(
@@ -267,7 +335,8 @@ class TeslaTelemetryOAuth2FlowHandler(
 
 
 class TeslaTelemetryOptionsFlow(OptionsFlow):
-    """Per-signal telemetry configuration + estimated-cost rate.
+    """Per-signal telemetry configuration, estimated-cost rate, and the
+    "Allow vehicle commands" switch.
 
     A single form, built by :func:`signals.build_options_schema`, with one
     collapsible section per signal category. Each signal is a minimum-refresh
@@ -278,20 +347,45 @@ class TeslaTelemetryOptionsFlow(OptionsFlow):
     Also carries the estimated-cost rate (Tesla bills per streaming signal; the
     default mirrors the published US rate of ~$1 / 150,000 signals), read live
     by ``EstimatedSignalCostSensor``.
+
+    "Allow vehicle commands" (default off) gates the ``navigate`` service.
+    Turning it on starts a re-auth when the entry's token lacks
+    ``vehicle_cmds`` — see ``__init__._async_check_command_scope``.
     """
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         if user_input is not None:
-            return self.async_create_entry(
-                title="",
-                data=parse_options_input(self.config_entry, user_input),
+            options = parse_options_input(self.config_entry, user_input)
+            commands = user_input.get("vehicle_commands") or {}
+            options[CONF_ALLOW_VEHICLE_COMMANDS] = bool(
+                commands.get(
+                    CONF_ALLOW_VEHICLE_COMMANDS,
+                    self.config_entry.options.get(
+                        CONF_ALLOW_VEHICLE_COMMANDS, DEFAULT_ALLOW_VEHICLE_COMMANDS
+                    ),
+                )
             )
-        return self.async_show_form(
-            step_id="init",
-            data_schema=build_options_schema(self.config_entry),
+            return self.async_create_entry(title="", data=options)
+        allowed = self.config_entry.options.get(
+            CONF_ALLOW_VEHICLE_COMMANDS, DEFAULT_ALLOW_VEHICLE_COMMANDS
         )
+        schema = build_options_schema(self.config_entry).extend(
+            {
+                vol.Required("vehicle_commands"): data_entry_flow.section(
+                    vol.Schema(
+                        {
+                            vol.Optional(
+                                CONF_ALLOW_VEHICLE_COMMANDS, default=allowed
+                            ): bool,
+                        }
+                    ),
+                    {"collapsed": not allowed},
+                )
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)
 
 
 def _validate_partner_key_pem(pem: str) -> str | None:

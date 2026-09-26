@@ -126,9 +126,9 @@ navigate:
   description: >
     Sends a destination to the vehicle's navigation — either free text, which
     the car looks up itself exactly as when a location is shared from the
-    Tesla phone app, or coordinates. Give one or the other. Needs the
-    vehicle_cmds scope, an awake car, and a vehicle that accepts unsigned
-    Fleet API commands (pre-2021 Model S/X).
+    Tesla phone app, or coordinates. Give one or the other. Off unless the
+    integration's "Allow vehicle commands" option is on; also needs an awake
+    car that accepts unsigned Fleet API commands (pre-2021 Model S/X).
   fields:
     entry_id:
       name: Config entry
@@ -182,3 +182,13 @@ navigate:
               value: "2"
             - label: Last stop
               value: "3"
+    locale:
+      name: Locale
+      description: >
+        Text destinations only: the locale the car reads the text in, as a
+        BCP 47 tag.
+      required: false
+      default: en-US
+      example: de-DE
+      selector:
+        text:

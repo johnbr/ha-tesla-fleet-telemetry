@@ -32,6 +32,10 @@
           "proxy_secret": "Proxy shared secret",
           "private_key_pem": "Partner private key (PEM)"
         }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate with Tesla",
+        "description": "{name} needs a new Tesla authorization. This happens when “Allow vehicle commands” is on but the current authorization doesn't include the vehicle_cmds scope — continuing sends you to Tesla to grant it. Nothing else about the entry changes."
       }
     },
     "error": {
@@ -53,7 +57,9 @@
       "oauth_unauthorized": "Tesla rejected the OAuth flow — the developer app may not be approved for the requested scopes.",
       "oauth_unknown_error": "Unknown OAuth error.",
       "no_vehicles": "Tesla returned no vehicles for this account.",
-      "cannot_connect": "Could not reach Tesla. Check network connectivity and try again."
+      "cannot_connect": "Could not reach Tesla. Check network connectivity and try again.",
+      "reauth_successful": "Re-authentication was successful.",
+      "reauth_wrong_account": "That Tesla account can't see this entry's vehicle. Sign in with the account that owns it."
     }
   },
   "options": {
@@ -106,6 +112,13 @@
             "description": "Tesla bills per streaming signal (one per data point). This rate drives the ‘Estimated signal cost’ sensor only — it does not change what Tesla charges. The default (≈ 6.67 per million) mirrors Tesla's published US rate of roughly $1 per 150,000 signals.",
             "data": {
               "cost_per_million_signals": "Estimated cost per 1,000,000 signals"
+            }
+          },
+          "vehicle_commands": {
+            "name": "Vehicle commands",
+            "description": "Off by default: the integration only reads telemetry. Turning this on enables the navigate service (sends a destination to the car) and, if the current authorization lacks the vehicle_cmds scope, starts a re-authentication that asks Tesla for it. Works only on vehicles that accept unsigned Fleet API commands (pre-2021 Model S/X).",
+            "data": {
+              "allow_vehicle_commands": "Allow vehicle commands"
             }
           }
         }

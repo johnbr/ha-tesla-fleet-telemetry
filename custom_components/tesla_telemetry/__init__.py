@@ -5,22 +5,28 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import aiohttp_client, config_entry_oauth2_flow
 
 from .const import (
+    CONF_ALLOW_VEHICLE_COMMANDS,
     CONF_LAST_SYNC_AT,
     CONF_PRIVATE_KEY_PEM,
     CONF_PROXY_SECRET,
     CONF_REGION,
     CONF_VEHICLE_NAME,
     CONF_VIN,
+    DEFAULT_ALLOW_VEHICLE_COMMANDS,
     DEFAULT_REGION,
     DOMAIN,
 )
 from .coordinator import TeslaTelemetryCoordinator
 from .receiver import TeslaTelemetryView
-from .services import async_register_services, async_schedule_auto_resync
+from .services import (
+    async_register_services,
+    async_schedule_auto_resync,
+    token_allows_commands,
+)
 from .signals import resolve_effective_intervals
 from .tesla_api import TeslaApi
 
@@ -115,6 +121,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
 
     async_register_services(hass)
+    _async_check_command_scope(hass, entry)
 
     # Daily check that re-pushes the telemetry config when it's >7 days old.
     # No-op until the user has run `bootstrap` at least once.
@@ -143,6 +150,7 @@ async def _async_options_updated(
     record = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     if not record:
         return
+    _async_check_command_scope(hass, entry)
     coordinator: TeslaTelemetryCoordinator = record["coordinator"]
     new_intervals = resolve_effective_intervals(entry)
     coordinator.effective_intervals = new_intervals
@@ -185,6 +193,30 @@ async def _async_options_updated(
         entry.data[CONF_VIN],
         result,
     )
+
+
+@callback
+def _async_check_command_scope(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Start a re-auth when "Allow vehicle commands" is on but the entry's
+    token doesn't carry ``vehicle_cmds``; the re-auth asks Tesla for it.
+
+    Runs at setup and on every options update. Starting a re-auth that is
+    already in progress is a no-op in HA, so repeats are harmless; an
+    entry with the option off is never touched, and until the re-auth is
+    completed the rest of the integration keeps working read-only.
+    """
+    if not entry.options.get(
+        CONF_ALLOW_VEHICLE_COMMANDS, DEFAULT_ALLOW_VEHICLE_COMMANDS
+    ):
+        return
+    if token_allows_commands(entry):
+        return
+    _LOGGER.info(
+        "tesla_telemetry: %s has vehicle commands allowed but its token lacks "
+        "vehicle_cmds — starting a re-auth to request it",
+        entry.title,
+    )
+    entry.async_start_reauth(hass)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
