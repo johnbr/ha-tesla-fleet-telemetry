@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.7.1...v0.8.0) (2026-09-26)
+
+
+### Features
+
+* add an opt-in navigate service that sends a destination to the car ([#7](https://github.com/johnbr/ha-tesla-fleet-telemetry/issues/7)) ([a361a9e](https://github.com/johnbr/ha-tesla-fleet-telemetry/commit/a361a9e2819123c0edb14ad3162cb8b7680c566c))
+
 ## [0.7.1](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.7.0...v0.7.1) (2026-09-24)
 
 
