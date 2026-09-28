@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.8.0...v0.8.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* stream the navigation destination at 1 s instead of 30 s ([#9](https://github.com/johnbr/ha-tesla-fleet-telemetry/issues/9)) ([9b35ad6](https://github.com/johnbr/ha-tesla-fleet-telemetry/commit/9b35ad6e2f36654e7f665511153bf5e612361b88))
+
 ## [0.8.0](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.7.1...v0.8.0) (2026-09-26)
 
 
