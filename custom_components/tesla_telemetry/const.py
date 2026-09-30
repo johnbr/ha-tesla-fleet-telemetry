@@ -286,7 +286,10 @@ TESLA_USER_TOKEN_URL = "https://auth.tesla.com/oauth2/v3/token"
 # grants on the one URL.
 OAUTH_AUTHORIZE_URL = "https://auth.tesla.com/oauth2/v3/authorize"
 OAUTH_TOKEN_URL = TESLA_USER_TOKEN_URL
-OAUTH_SCOPES = ["openid", "offline_access", "vehicle_device_data"]
+# `vehicle_location` is required for location signals (Location, route,
+# destination) on developer apps created after Tesla split it out of
+# `vehicle_device_data`; without it fleet_telemetry_config_jws returns 403.
+OAUTH_SCOPES = ["openid", "offline_access", "vehicle_device_data", "vehicle_location"]
 
 # Vehicle commands (today only the `navigate` service) are OPT-IN per entry:
 # setup requests read-only scopes, and turning this option on is what adds
