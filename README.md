@@ -107,7 +107,9 @@ Entity IDs follow the vehicle's name, e.g. `sensor.<vehicle>_speed`,
    Note the **client ID** and **client secret**.
 2. Add `https://my.home-assistant.io/redirect/oauth` to the application's
    **Allowed Redirect URIs** (Home Assistant's OAuth flow uses it).
-3. Request the scopes `openid`, `offline_access`, and `vehicle_device_data`.
+3. Request the scopes `openid`, `offline_access`, `vehicle_device_data`, and
+   `vehicle_location` (newer developer apps need `vehicle_location` for the
+   location signals; without it `bootstrap` fails with a 403).
 4. Generate the partner key pair and host its public half:
    ```sh
    openssl ecparam -genkey -name prime256v1 -noout -out partner.key
@@ -142,7 +144,9 @@ server {
     ssl_verify_client on;
     ssl_verify_depth 2;
 
-    location /api/tesla_telemetry/ws {
+    # The vehicle connects to the root path (Tesla's telemetry config carries
+    # only a hostname and port), so proxy "/" to the integration's endpoint.
+    location / {
         proxy_pass http://127.0.0.1:8123/api/tesla_telemetry/ws;
         proxy_http_version 1.1;
 
