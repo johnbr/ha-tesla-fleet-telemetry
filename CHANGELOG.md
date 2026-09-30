@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.8.1...v0.8.2) (2026-09-30)
+
+
+### Bug Fixes
+
+* request vehicle_location scope and proxy nginx root path ([#13](https://github.com/johnbr/ha-tesla-fleet-telemetry/issues/13)) ([f401214](https://github.com/johnbr/ha-tesla-fleet-telemetry/commit/f40121440147eede4780b94c53b44827291af87e))
+
 ## [0.8.1](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.8.0...v0.8.1) (2026-09-28)
 
 
