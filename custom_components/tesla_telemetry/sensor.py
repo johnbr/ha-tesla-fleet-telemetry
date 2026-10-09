@@ -52,6 +52,7 @@ from .const import (
     SIGNAL_EST_BATTERY_RANGE,
     SIGNAL_FAST_CHARGER_PRESENT,
     SIGNAL_GEAR,
+    SIGNAL_GPS_HEADING,
     SIGNAL_INSIDE_TEMP,
     SIGNAL_MILES_TO_ARRIVAL,
     SIGNAL_MINUTES_TO_ARRIVAL,
@@ -99,6 +100,7 @@ async def async_setup_entry(
             DistanceToArrivalSensor(coordinator),
             TimeToArrivalSensor(coordinator),
             GearSensor(coordinator),
+            HeadingSensor(coordinator),
             # Battery / range
             BatteryLevelSensor(coordinator),
             SocSensor(coordinator),
@@ -239,6 +241,29 @@ class SpeedSensor(_BaseTelemetrySensor):
     def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.vin}_vehicle_speed_telemetry"
+
+    def _handle(self, sample: SignalSample) -> None:
+        self._attr_native_value = value_as_float(sample.value)
+
+
+class HeadingSensor(_BaseTelemetrySensor):
+    """Compass heading in degrees (0 = north, clockwise).
+
+    No ``state_class``: a heading is an angle, and the long-term-statistics
+    mean of 350° and 10° is 180° — the opposite direction. The same value is
+    also published as the Location tracker's ``heading`` attribute, which is
+    what map cards read to rotate a marker.
+    """
+
+    _signal_name = SIGNAL_GPS_HEADING
+    _attr_name = "Heading"
+    _attr_icon = "mdi:compass-outline"
+    _attr_native_unit_of_measurement = "°"
+    _attr_suggested_display_precision = 0
+
+    def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.vin}_gps_heading_telemetry"
 
     def _handle(self, sample: SignalSample) -> None:
         self._attr_native_value = value_as_float(sample.value)

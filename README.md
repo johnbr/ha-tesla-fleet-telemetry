@@ -31,16 +31,16 @@ integration once per VIN to track multiple cars.
 | Platform | Count | Examples |
 | --- | --- | --- |
 | `device_tracker` | 2 | Location, Route (active nav destination) |
-| `sensor` | 33 | Speed, State of charge, Charging state, Inside temperature, Odometer, Tire pressure ×4 |
+| `sensor` | 34 | Speed, State of charge, Charging state, Inside temperature, Odometer, Tire pressure ×4 |
 | `binary_sensor` | 17 | Doors ×6, Windows ×4, Lock, Charging, Climate, Sentry armed, User present |
 
 <details>
 <summary>Full entity list</summary>
 
-**Device trackers** — Location, Route
+**Device trackers** — Location (carries a `heading` attribute), Route
 
 **Sensors** — Speed, Distance to arrival, Time to arrival, Traffic delay,
-Odometer, Gear, Battery level, State of charge, Battery range, Rated range,
+Odometer, Gear, Heading, Battery level, State of charge, Battery range, Rated range,
 Charging state, Charge rate, AC charging power, DC charging power,
 AC charge energy added, DC charge energy added, Charger current,
 Charger voltage, Fast charger type, Charging cable, Charge limit,
