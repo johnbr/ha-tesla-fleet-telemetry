@@ -1,2 +1,3 @@
 pytest>=8
 cryptography>=42
+protobuf>=4.25,<8
