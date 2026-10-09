@@ -1,0 +1,8 @@
+name: tesla_telemetry CodeQL config
+
+# Generated protobuf / flatbuffers bindings (regenerated from upstream Tesla
+# schemas, see proto/README.md) — not hand-written code, so findings there
+# aren't actionable.
+paths-ignore:
+  - custom_components/tesla_telemetry/proto/*_pb2.py
+  - custom_components/tesla_telemetry/proto/*_generated.py
