@@ -25,33 +25,43 @@ sends a destination to the car's navigation and is off until you enable it
 
 ## Entities
 
-One Home Assistant **device per vehicle**, carrying ~52 entities. Add the
-integration once per VIN to track multiple cars.
+One Home Assistant **device per vehicle**, carrying 47 entities by default.
+Add the integration once per VIN to track multiple cars. Each signal you add
+from the catalog adds one more sensor (see [Choosing signals](#choosing-signals)).
 
 | Platform | Count | Examples |
 | --- | --- | --- |
 | `device_tracker` | 2 | Location, Route (active nav destination) |
-| `sensor` | 34 | Speed, State of charge, Charging state, Inside temperature, Odometer, Tire pressure ×4 |
-| `binary_sensor` | 17 | Doors ×6, Windows ×4, Lock, Charging, Climate, Sentry armed, User present |
+| `sensor` | 30 | Speed, State of charge, Charging state, Inside temperature, Motor stator temperatures, Signals received |
+| `binary_sensor` | 15 | Doors ×6, Windows ×4, Lock, Charge port door, Charge cable, Charging, User present |
 
 <details>
 <summary>Full entity list</summary>
 
-**Device trackers** — Location (carries a `heading` attribute), Route
+**Device trackers**: Location (with a `heading` attribute), Route
 
-**Sensors** — Speed, Distance to arrival, Time to arrival, Traffic delay,
-Odometer, Gear, Heading, Battery level, State of charge, Battery range, Rated range,
-Charging state, Charge rate, AC charging power, DC charging power,
-AC charge energy added, DC charge energy added, Charger current,
-Charger voltage, Fast charger type, Charging cable, Charge limit,
-Time to full charge, Inside temperature, Outside temperature,
-Climate left setpoint, Climate right setpoint, Tire pressure (front left,
-front right, rear left, rear right), Software version,
-Software update download, Software update install
+**Sensors**
+* *Driving & navigation*: Speed, Heading, Gear, Distance to arrival,
+  Time to arrival
+* *Battery & range*: Battery level, State of charge, Battery range,
+  Rated range
+* *Charging*: Charging state, AC charging power, DC charging power,
+  AC charge energy added, DC charge energy added, Fast charger type,
+  Charging cable, Charge limit, Time to full charge
+* *Climate*: Inside temperature, Outside temperature
+* *Software update*: Software version, Software update download,
+  Software update install
+* *Powertrain & thermal*: Front motor stator temperature, Rear motor stator
+  temperature, Battery temperature (max), Battery temperature (min),
+  Battery temperature (avg, calculated)
+* *Diagnostic*: Signals received, Estimated signal cost
 
-**Binary sensors** — Front/rear driver/passenger doors, Frunk, Trunk,
+**Binary sensors**: Front/rear driver/passenger doors, Frunk, Trunk,
 Front/rear driver/passenger windows, Lock, Charge port door, Charge cable,
-Charging, Climate, Sentry armed, User present
+Charging, User present
+
+Rear-wheel-drive cars only report the rear drive unit, so *Front motor stator
+temperature* stays unknown on them.
 
 </details>
 
@@ -205,6 +215,46 @@ Assistant `config/custom_components/` directory and restart.)
 3. Wake the vehicle (open the Tesla app) and watch the nginx access log for
    the telemetry vhost — a `Hermes/...` user agent connecting is the sign the
    car has picked up the configuration. Entities begin updating shortly after.
+
+## Choosing signals
+
+The integration streams a curated default set of signals. To change it, open
+**Settings → Devices & Services → Tesla Fleet Telemetry → Configure**. No
+update or restart is needed, and saving re-pushes the config to the car.
+
+* **Retune**: each signal's value is the minimum number of seconds between
+  updates. Tesla sends a signal when it changes, and no more often than that.
+* **Disable**: set a signal to `0`.
+* **Add**: under *Add signals from the full Tesla catalog*, pick any signal.
+  It streams at 60 s, and its interval then appears under *Additional signals*.
+
+Each added signal gets a **generic sensor** named after it, such as
+`sensor.<vehicle>_sentry_mode`. Its state is decoded from what the car sends:
+numbers become measurements that chart and feed long-term statistics, enums
+become friendly text (`armed`), booleans become `on`/`off`, and composite
+values (location, doors, …) become a summary with each field as an attribute.
+The `value_type` attribute shows which kind arrived. Setting an added signal
+back to `0` removes its sensor.
+
+Generic sensors have no unit. To add one, use HA's customize:
+
+```yaml
+homeassistant:
+  customize:
+    sensor.my_car_odometer:
+      unit_of_measurement: mi
+      device_class: distance
+```
+
+Notes:
+
+* **Billing**: every streamed datum counts toward Tesla's signal bill. Watch
+  *Signals received* → `by_signal` after you add something.
+* **Older and newer vehicles**: support differs by model year and firmware.
+  Pre-2021 Model S/X may never report some catalog signals; their sensors
+  stay `unknown`, and that costs nothing. If Tesla rejects the whole config
+  for a vehicle (e.g. `unsupported_firmware`), a warning is logged.
+* Signals are chosen per vehicle, so each car can stream a different set.
 
 ## Multiple vehicles
 

@@ -50,6 +50,20 @@ from .crypto import sign_telemetry_config_jwt
 _LOGGER = logging.getLogger(__name__)
 
 
+def _skipped_reasons(response: dict[str, Any], vin: str) -> list[str]:
+    """Reasons Tesla lists ``vin`` under ``skipped_vehicles`` in a
+    fleet_telemetry_config response (``{reason: [vins]}``); empty when it
+    wasn't skipped."""
+    skipped = response.get("skipped_vehicles")
+    if not isinstance(skipped, dict):
+        return []
+    return sorted(
+        str(reason)
+        for reason, vins in skipped.items()
+        if isinstance(vins, list) and vin in vins
+    )
+
+
 class TeslaApiError(Exception):
     """Any non-success response from Tesla we couldn't recover from."""
 
@@ -202,7 +216,20 @@ class TeslaApi:
         data = await self._user_request(
             "POST", "/api/1/vehicles/fleet_telemetry_config_jws", json=body
         )
-        return dict(data.get("response") or {})
+        response = dict(data.get("response") or {})
+        reasons = _skipped_reasons(response, vin)
+        if reasons:
+            # A 200 with the VIN under skipped_vehicles means the car will
+            # NOT stream — e.g. unsupported_firmware / unsupported_hardware
+            # on some older vehicles, or missing_key before the virtual key
+            # is paired. Surface it instead of logging a quiet "ok".
+            _LOGGER.warning(
+                "tesla_telemetry: Tesla accepted the telemetry config request "
+                "but skipped vin=%s (%s) — the vehicle will not stream",
+                vin,
+                ", ".join(reasons),
+            )
+        return response
 
     async def delete_fleet_telemetry_config(
         self, vin: str

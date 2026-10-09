@@ -179,3 +179,59 @@ def test_all_catalog_signals_from_proto() -> None:
     # Every curated default is a real catalog signal.
     assert set(const.DEFAULT_INTERVALS_SECONDS) <= set(catalog)
     assert len(catalog) > 200  # the full Field enum, not just the curated set
+
+
+# ---------------------------------------------------------------------------
+# Generic entities for catalog-added signals
+# ---------------------------------------------------------------------------
+def test_generic_entity_signals_only_enabled_additions() -> None:
+    entry = _entry(
+        {
+            const.CONF_SIGNAL_OVERRIDES: {
+                "Odometer": 60,  # added from the catalog
+                "SentryMode": 0,  # stale zero — not an entity
+                "Location": 2,  # curated retune — keeps its own entity
+                "VehicleSpeed": 0,  # curated disable
+            }
+        }
+    )
+    assert signals.generic_entity_signals(entry) == ["Odometer"]
+
+
+def test_no_overrides_means_no_generic_entities() -> None:
+    assert signals.generic_entity_signals(_entry()) == []
+
+
+def test_generic_unique_id_round_trip() -> None:
+    uid = signals.generic_unique_id("5YJSA1E2XLF000001", "SentryMode")
+    assert uid == "5YJSA1E2XLF000001_signal_SentryMode"
+    assert (
+        signals.signal_from_generic_unique_id("5YJSA1E2XLF000001", uid)
+        == "SentryMode"
+    )
+
+
+@pytest.mark.parametrize(
+    "unique_id",
+    [
+        "5YJSA1E2XLF000001_vehicle_speed_telemetry",  # curated entity
+        "7SAYGDEE0PF000002_signal_SentryMode",  # another vehicle
+        "5YJSA1E2XLF000001_signal_",  # empty signal
+    ],
+)
+def test_signal_from_generic_unique_id_rejects_others(unique_id: str) -> None:
+    assert signals.signal_from_generic_unique_id("5YJSA1E2XLF000001", unique_id) is None
+
+
+@pytest.mark.parametrize(
+    ("signal", "expected"),
+    [
+        ("ACChargingPower", "AC charging power"),
+        ("DiStatorTempF", "Di stator temp F"),
+        ("SentryMode", "Sentry mode"),
+        ("Odometer", "Odometer"),
+        ("BMSState", "BMS state"),
+    ],
+)
+def test_humanize_signal_name(signal: str, expected: str) -> None:
+    assert signals.humanize_signal_name(signal) == expected

@@ -7,6 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import aiohttp_client, config_entry_oauth2_flow
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .const import (
     CONF_ALLOW_VEHICLE_COMMANDS,
@@ -20,7 +21,7 @@ from .const import (
     DEFAULT_REGION,
     DOMAIN,
 )
-from .coordinator import TeslaTelemetryCoordinator
+from .coordinator import TeslaTelemetryCoordinator, signals_changed_topic
 from .receiver import TeslaTelemetryView
 from .services import (
     async_register_services,
@@ -144,8 +145,9 @@ async def _async_options_updated(
 
     Refresh the coordinator's staleness map and re-push the telemetry config
     so edits reach the vehicle immediately rather than waiting for the daily
-    auto-resync. Entities are not reloaded — the entity set is static, so a
-    disabled signal's entity simply stops receiving and goes unavailable.
+    auto-resync. Curated entities are static, so a disabled curated signal's
+    entity simply stops receiving; generic entities for catalog-added signals
+    are added/removed by the sensor platform via ``signals_changed_topic``.
     """
     record = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     if not record:
@@ -154,6 +156,10 @@ async def _async_options_updated(
     coordinator: TeslaTelemetryCoordinator = record["coordinator"]
     new_intervals = resolve_effective_intervals(entry)
     coordinator.effective_intervals = new_intervals
+    # Add/remove generic entities for catalog-added signals. Sent before the
+    # push short-circuits below so entities track the selection even when the
+    # push is skipped or fails; a no-op when the selection didn't change.
+    async_dispatcher_send(hass, signals_changed_topic(entry.entry_id))
 
     # Skip a redundant push when the effective config is unchanged — e.g. only
     # the cost rate was edited, or this fired from our own last_sync stamp

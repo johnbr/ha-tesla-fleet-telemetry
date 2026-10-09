@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any, ClassVar
 
 from homeassistant.components.sensor import (
@@ -32,6 +33,7 @@ from homeassistant.const import (
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
@@ -73,12 +75,21 @@ from .coordinator import (
     SignalSample,
     TeslaTelemetryCoordinator,
     signal_dispatcher_topic,
+    signals_changed_topic,
+)
+from .signals import (
+    generic_entity_signals,
+    generic_unique_id,
+    humanize_signal_name,
+    signal_from_generic_unique_id,
 )
 from .values import (
+    VALUE_KIND_NUMBER,
     value_as_bool,
     value_as_charge_state,
     value_as_enum_name,
     value_as_float,
+    value_as_native,
     value_as_string,
 )
 
@@ -133,6 +144,64 @@ async def async_setup_entry(
             SignalsReceivedSensor(coordinator),
             EstimatedSignalCostSensor(coordinator, entry),
         ]
+    )
+    _async_setup_generic_sensors(hass, entry, coordinator, async_add_entities)
+
+
+@callback
+def _async_setup_generic_sensors(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    coordinator: TeslaTelemetryCoordinator,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Keep one ``GenericTelemetrySensor`` per catalog-added signal.
+
+    Entities are created at setup, then added/removed live whenever the
+    options flow changes the selection (``signals_changed_topic``), so a
+    signal picked from the catalog shows up without a release or reload.
+    Removed signals are deleted from the entity registry rather than left
+    behind as orphaned ``unavailable`` entities.
+    """
+    registry = er.async_get(hass)
+    generic: dict[str, GenericTelemetrySensor] = {
+        signal: GenericTelemetrySensor(coordinator, signal)
+        for signal in generic_entity_signals(entry)
+    }
+
+    # Sweep registry leftovers: signals removed while the entry was unloaded,
+    # or promoted to a purpose-built entity in a later release.
+    for reg_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if reg_entry.domain != "sensor":
+            continue
+        signal = signal_from_generic_unique_id(coordinator.vin, reg_entry.unique_id)
+        if signal is not None and signal not in generic:
+            registry.async_remove(reg_entry.entity_id)
+
+    if generic:
+        async_add_entities(generic.values())
+
+    @callback
+    def _sync() -> None:
+        wanted = set(generic_entity_signals(entry))
+        for signal in [s for s in generic if s not in wanted]:
+            entity = generic.pop(signal)
+            entity_id = entity.entity_id or registry.async_get_entity_id(
+                "sensor", DOMAIN, entity.unique_id
+            )
+            if entity_id:
+                # Removing the registry entry also removes the live entity.
+                registry.async_remove(entity_id)
+        added = [
+            GenericTelemetrySensor(coordinator, signal)
+            for signal in sorted(wanted - generic.keys())
+        ]
+        if added:
+            generic.update((e.signal, e) for e in added)
+            async_add_entities(added)
+
+    entry.async_on_unload(
+        async_dispatcher_connect(hass, signals_changed_topic(entry.entry_id), _sync)
     )
 
 
@@ -684,6 +753,54 @@ class AvgBatteryTempSensor(_BaseTelemetrySensor):
             self._attr_native_value = None
             return
         self._attr_native_value = (hi + lo) / 2.0
+
+
+# ---------------------------------------------------------------------------
+# Generic (catalog-added signals)
+# ---------------------------------------------------------------------------
+class GenericTelemetrySensor(_BaseTelemetrySensor):
+    """Sensor for a signal the user added from the full Tesla catalog.
+
+    There's no per-signal metadata, so the value is classified per sample by
+    ``value_as_native`` from whichever ``Value`` arm arrives — older and newer
+    vehicles (and untyped firmware) can send the same field differently.
+    Numbers get ``MEASUREMENT`` so they chart and feed statistics; anything
+    else is plain text. Unit / device class can be set with HA's
+    ``homeassistant: customize:``.
+    """
+
+    _attr_icon = "mdi:car-info"
+    _attr_state_class = None
+
+    def __init__(self, coordinator: TeslaTelemetryCoordinator, signal: str) -> None:
+        super().__init__(coordinator)
+        self._signal_name = signal
+        self._attr_name = humanize_signal_name(signal)
+        self._attr_unique_id = generic_unique_id(coordinator.vin, signal)
+        self._attr_extra_state_attributes = {"signal": signal}
+
+    @property
+    def signal(self) -> str:
+        return self._signal_name
+
+    def _handle(self, sample: SignalSample) -> None:
+        kind, state, attrs = value_as_native(sample.value)
+        self._attr_native_value = state
+        # Re-decided on every sample: HA rejects a non-numeric state on a
+        # MEASUREMENT entity, and the arm can differ between samples.
+        self._attr_state_class = (
+            SensorStateClass.MEASUREMENT if kind == VALUE_KIND_NUMBER else None
+        )
+        self._attr_extra_state_attributes = {
+            **attrs,
+            "signal": self._signal_name,
+            "value_type": kind,
+        }
+
+    async def _async_restore_last(self) -> None:
+        await super()._async_restore_last()
+        if isinstance(self._attr_native_value, (int, float, Decimal)):
+            self._attr_state_class = SensorStateClass.MEASUREMENT
 
 
 # ---------------------------------------------------------------------------

@@ -102,7 +102,7 @@
           },
           "add_signals": {
             "name": "Add signals from the full Tesla catalog",
-            "description": "Pick any signal from the complete Tesla catalog to start streaming it; it appears above with its own interval next time you open this dialog. Note: a signal with no matching entity still streams and counts toward your signal bill, but surfaces only in the ‘Signals received’ breakdown.",
+            "description": "Pick any signal from the complete Tesla catalog to start streaming it; it appears above with its own interval next time you open this dialog. Each added signal also gets a sensor named after it (numbers as measurements, everything else as text); setting it to 0 removes both the signal and its sensor. Every added signal counts toward your signal bill. Not every vehicle sends every signal — older cars may never report some, in which case the sensor stays unknown.",
             "data": {
               "signals": "Signals to add"
             }
