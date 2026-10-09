@@ -3,7 +3,9 @@
 Two trackers are exposed per vehicle:
 
   * Location — the car's live GPS location, state derived from zone (HA
-    computes home / not_home / <zone> from lat/lon).
+    computes home / not_home / <zone> from lat/lon). Carries the compass
+    heading as a ``heading`` attribute (degrees, 0 = north), the attribute
+    map cards read to point a marker the way the car is facing.
   * Route    — the active in-car nav destination. State is the destination
     name string; lat/lon attrs point at the destination, not the car.
 
@@ -13,6 +15,7 @@ use ``has_entity_name`` so the vehicle name comes from the HA device.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from homeassistant.components.device_tracker import SourceType, TrackerEntity
 from homeassistant.config_entries import ConfigEntry
@@ -26,6 +29,7 @@ from .const import (
     DOMAIN,
     SIGNAL_DESTINATION_LOCATION,
     SIGNAL_DESTINATION_NAME,
+    SIGNAL_GPS_HEADING,
     SIGNAL_LOCATION,
 )
 from .coordinator import (
@@ -33,6 +37,7 @@ from .coordinator import (
     TeslaTelemetryCoordinator,
     signal_dispatcher_topic,
 )
+from .values import value_as_float
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -113,11 +118,37 @@ class LocationTracker(_BaseTelemetryTracker):
     def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.vin}_location_telemetry"
+        self._heading: float | None = None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        if self._heading is None:
+            return None
+        return {"heading": self._heading}
 
     async def async_added_to_hass(self) -> None:
+        last = None
         if self._coordinator.get(SIGNAL_LOCATION) is None:
-            await self._async_restore_location()
+            last = await self._async_restore_location()
+        if self._coordinator.get(SIGNAL_GPS_HEADING) is None:
+            # A parked car sends no heading (push-on-change), so restore the
+            # last one rather than drop the attribute until the next drive.
+            if last is None:
+                last = await self.async_get_last_state()
+            if last is not None:
+                self._heading = last.attributes.get("heading")
         self._subscribe(SIGNAL_LOCATION, self._on_location)
+        self._subscribe(SIGNAL_GPS_HEADING, self._on_heading)
+
+    @callback
+    def _on_heading(self, sample: SignalSample) -> None:
+        heading = value_as_float(sample.value)
+        if heading is None:
+            # An `invalid` sample (no GPS fix) keeps the last good heading.
+            return
+        self._heading = round(heading % 360, 1)
+        if self.hass is not None:
+            self.async_write_ha_state()
 
     @callback
     def _on_location(self, sample: SignalSample) -> None:

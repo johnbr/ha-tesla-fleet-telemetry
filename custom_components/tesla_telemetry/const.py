@@ -14,6 +14,7 @@ SIGNAL_LOCATION = "Location"
 SIGNAL_GPS_STATE = "GpsState"
 SIGNAL_VEHICLE_SPEED = "VehicleSpeed"
 SIGNAL_GEAR = "Gear"
+SIGNAL_GPS_HEADING = "GpsHeading"
 SIGNAL_DESTINATION_NAME = "DestinationName"
 SIGNAL_DESTINATION_LOCATION = "DestinationLocation"
 SIGNAL_MILES_TO_ARRIVAL = "MilesToArrival"
@@ -69,6 +70,10 @@ DEFAULT_INTERVALS_SECONDS: dict[str, int] = {
     SIGNAL_LOCATION: 5,
     SIGNAL_VEHICLE_SPEED: 5,
     SIGNAL_GEAR: 5,
+    # compass heading (degrees, 0 = north) — turns the car's map marker.
+    # Push-on-change, so it is silent while parked and costs at most one
+    # signal per 5 s on the move, the same ceiling as Location's default.
+    SIGNAL_GPS_HEADING: 5,
     # navigation — only meaningful while a route is active. The destination
     # itself changes only when a route is set or cleared (a handful of times
     # a trip), so 1 s costs nothing in signals and gets a newly set route —
@@ -142,6 +147,7 @@ SIGNAL_CATEGORIES: dict[str, list[str]] = {
         SIGNAL_LOCATION,
         SIGNAL_VEHICLE_SPEED,
         SIGNAL_GEAR,
+        SIGNAL_GPS_HEADING,
         SIGNAL_DESTINATION_NAME,
         SIGNAL_DESTINATION_LOCATION,
         SIGNAL_MILES_TO_ARRIVAL,
