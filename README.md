@@ -25,33 +25,43 @@ sends a destination to the car's navigation and is off until you enable it
 
 ## Entities
 
-One Home Assistant **device per vehicle**, carrying ~52 entities. Add the
-integration once per VIN to track multiple cars.
+One Home Assistant **device per vehicle**, carrying 47 entities by default.
+Add the integration once per VIN to track multiple cars. Each signal you add
+from the catalog adds one more sensor (see [Choosing signals](#choosing-signals)).
 
 | Platform | Count | Examples |
 | --- | --- | --- |
 | `device_tracker` | 2 | Location, Route (active nav destination) |
-| `sensor` | 34 | Speed, State of charge, Charging state, Inside temperature, Odometer, Tire pressure ×4 |
-| `binary_sensor` | 17 | Doors ×6, Windows ×4, Lock, Charging, Climate, Sentry armed, User present |
+| `sensor` | 30 | Speed, State of charge, Charging state, Inside temperature, Motor stator temperatures, Signals received |
+| `binary_sensor` | 15 | Doors ×6, Windows ×4, Lock, Charge port door, Charge cable, Charging, User present |
 
 <details>
 <summary>Full entity list</summary>
 
-**Device trackers** — Location (carries a `heading` attribute), Route
+**Device trackers**: Location (with a `heading` attribute), Route
 
-**Sensors** — Speed, Distance to arrival, Time to arrival, Traffic delay,
-Odometer, Gear, Heading, Battery level, State of charge, Battery range, Rated range,
-Charging state, Charge rate, AC charging power, DC charging power,
-AC charge energy added, DC charge energy added, Charger current,
-Charger voltage, Fast charger type, Charging cable, Charge limit,
-Time to full charge, Inside temperature, Outside temperature,
-Climate left setpoint, Climate right setpoint, Tire pressure (front left,
-front right, rear left, rear right), Software version,
-Software update download, Software update install
+**Sensors**
+* *Driving & navigation*: Speed, Heading, Gear, Distance to arrival,
+  Time to arrival
+* *Battery & range*: Battery level, State of charge, Battery range,
+  Rated range
+* *Charging*: Charging state, AC charging power, DC charging power,
+  AC charge energy added, DC charge energy added, Fast charger type,
+  Charging cable, Charge limit, Time to full charge
+* *Climate*: Inside temperature, Outside temperature
+* *Software update*: Software version, Software update download,
+  Software update install
+* *Powertrain & thermal*: Front motor stator temperature, Rear motor stator
+  temperature, Battery temperature (max), Battery temperature (min),
+  Battery temperature (avg, calculated)
+* *Diagnostic*: Signals received, Estimated signal cost
 
-**Binary sensors** — Front/rear driver/passenger doors, Frunk, Trunk,
+**Binary sensors**: Front/rear driver/passenger doors, Frunk, Trunk,
 Front/rear driver/passenger windows, Lock, Charge port door, Charge cable,
-Charging, Climate, Sentry armed, User present
+Charging, User present
+
+Rear-wheel-drive cars only report the rear drive unit, so *Front motor stator
+temperature* stays unknown on them.
 
 </details>
 
