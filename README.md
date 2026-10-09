@@ -206,6 +206,46 @@ Assistant `config/custom_components/` directory and restart.)
    the telemetry vhost — a `Hermes/...` user agent connecting is the sign the
    car has picked up the configuration. Entities begin updating shortly after.
 
+## Choosing signals
+
+The integration streams a curated default set of signals. To change it, open
+**Settings → Devices & Services → Tesla Fleet Telemetry → Configure**. No
+update or restart is needed, and saving re-pushes the config to the car.
+
+* **Retune**: each signal's value is the minimum number of seconds between
+  updates. Tesla sends a signal when it changes, and no more often than that.
+* **Disable**: set a signal to `0`.
+* **Add**: under *Add signals from the full Tesla catalog*, pick any signal.
+  It streams at 60 s, and its interval then appears under *Additional signals*.
+
+Each added signal gets a **generic sensor** named after it, such as
+`sensor.<vehicle>_sentry_mode`. Its state is decoded from what the car sends:
+numbers become measurements that chart and feed long-term statistics, enums
+become friendly text (`armed`), booleans become `on`/`off`, and composite
+values (location, doors, …) become a summary with each field as an attribute.
+The `value_type` attribute shows which kind arrived. Setting an added signal
+back to `0` removes its sensor.
+
+Generic sensors have no unit. To add one, use HA's customize:
+
+```yaml
+homeassistant:
+  customize:
+    sensor.my_car_odometer:
+      unit_of_measurement: mi
+      device_class: distance
+```
+
+Notes:
+
+* **Billing**: every streamed datum counts toward Tesla's signal bill. Watch
+  *Signals received* → `by_signal` after you add something.
+* **Older and newer vehicles**: support differs by model year and firmware.
+  Pre-2021 Model S/X may never report some catalog signals; their sensors
+  stay `unknown`, and that costs nothing. If Tesla rejects the whole config
+  for a vehicle (e.g. `unsupported_firmware`), a warning is logged.
+* Signals are chosen per vehicle, so each car can stream a different set.
+
 ## Multiple vehicles
 
 Add the integration again for each additional VIN. The endpoint settings

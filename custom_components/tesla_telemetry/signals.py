@@ -20,6 +20,7 @@ import voluptuous / HA selectors lazily inside the functions that need them.
 """
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 from typing import Any
 
@@ -102,6 +103,51 @@ def additional_signals(entry: Any) -> list[str]:
     added from the full catalog. Sorted for stable display."""
     curated = _curated_signals()
     return sorted(s for s in signal_overrides(entry) if s not in curated)
+
+
+# --------------------------------------------------------------------------
+# Generic entities for catalog-added signals.
+#
+# Every enabled "additional" signal gets a generic sensor so a signal added
+# from the catalog is visible without a release. Curated signals never do —
+# they keep their purpose-built entities. The unique_id pattern is distinct
+# from every curated ``*_telemetry`` id, so the integration can recognise
+# (and clean up) its own generic entities in the registry.
+# --------------------------------------------------------------------------
+GENERIC_UNIQUE_ID_INFIX = "_signal_"
+
+_HUMANIZE_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+
+
+def generic_entity_signals(entry: Any) -> list[str]:
+    """Signals that get a generic entity: user-added, currently enabled."""
+    overrides = signal_overrides(entry)
+    return [s for s in additional_signals(entry) if overrides.get(s, 0) > 0]
+
+
+def generic_unique_id(vin: str, signal: str) -> str:
+    return f"{vin}{GENERIC_UNIQUE_ID_INFIX}{signal}"
+
+
+def signal_from_generic_unique_id(vin: str, unique_id: str) -> str | None:
+    """The signal a generic entity's unique_id belongs to, or ``None`` when
+    the id isn't a generic entity of this vehicle."""
+    prefix = f"{vin}{GENERIC_UNIQUE_ID_INFIX}"
+    if not unique_id.startswith(prefix):
+        return None
+    return unique_id[len(prefix):] or None
+
+
+def humanize_signal_name(signal: str) -> str:
+    """``ACChargingPower`` → ``AC charging power``; ``SentryMode`` →
+    ``Sentry mode``. Acronym runs stay upper-case; other words are lowered
+    after the first, matching HA's sentence-case entity names."""
+    words = _HUMANIZE_BOUNDARY.sub(" ", signal).split()
+    out = [
+        w if (i == 0 or w.isupper()) else w.lower()
+        for i, w in enumerate(words)
+    ]
+    return " ".join(out) or signal
 
 
 # --------------------------------------------------------------------------

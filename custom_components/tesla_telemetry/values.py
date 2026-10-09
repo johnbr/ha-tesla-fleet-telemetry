@@ -10,6 +10,8 @@ binary_sensor platforms both consume it.
 """
 from __future__ import annotations
 
+import math
+import re
 from typing import Any
 
 from .proto import vehicle_data_pb2 as vdp
@@ -148,12 +150,102 @@ def value_is_window_open(value: Any) -> bool | None:
     return None
 
 
+# --------------------------------------------------------------------------
+# Generic decoding for catalog signals that have no purpose-built entity.
+#
+# The same field can arrive on different ``Value`` arms depending on the
+# vehicle generation and firmware — pre-2021 S/X and untyped firmware send
+# numbers as ``string_value``; ``FastChargerPresent`` is a bool on some cars
+# and an enum on others — so nothing here assumes a type: every sample is
+# classified from the arm that is actually populated.
+# --------------------------------------------------------------------------
+VALUE_KIND_NUMBER = "number"
+VALUE_KIND_BOOL = "bool"
+VALUE_KIND_STRING = "string"
+VALUE_KIND_ENUM = "enum"
+VALUE_KIND_COMPOSITE = "composite"
+
+_NUMERIC_ARMS = frozenset({"int_value", "long_value", "float_value", "double_value"})
+_MAX_STATE_LEN = 255
+_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+
+
+def _enum_friendly(enum_type_name: str, value_name: str) -> str:
+    """``SentryModeStateArmed`` → ``armed``: drop the enum type's own name
+    prefix (Tesla's convention), then snake_case what's left."""
+    stem = value_name
+    for prefix in (enum_type_name, enum_type_name.removesuffix("Value")):
+        if prefix and stem.startswith(prefix) and len(stem) > len(prefix):
+            stem = stem[len(prefix):]
+            break
+    return _CAMEL_BOUNDARY.sub("_", stem).lower()
+
+
+def _message_fields(message: Any) -> dict[str, Any]:
+    """Every field of a composite value (``LocationValue``, ``Doors``,
+    ``Time``, …), defaults included so an all-closed ``Doors`` still lists
+    each door. Walked by descriptor rather than ``MessageToDict`` so the
+    output doesn't depend on the installed protobuf version's options."""
+    fields: dict[str, Any] = {}
+    for desc in message.DESCRIPTOR.fields:
+        raw = getattr(message, desc.name)
+        if desc.enum_type is not None:
+            enum_value = desc.enum_type.values_by_number.get(int(raw))
+            fields[desc.name] = enum_value.name if enum_value else int(raw)
+        elif desc.message_type is not None:
+            fields[desc.name] = _message_fields(raw)
+        else:
+            fields[desc.name] = raw
+    return fields
+
+
+def value_as_native(value: Any) -> tuple[str | None, Any, dict[str, Any]]:
+    """Classify any ``Value`` into ``(kind, state, attributes)``.
+
+    ``kind`` is one of the ``VALUE_KIND_*`` constants, or ``None`` with a
+    ``None`` state when the datum is invalid or empty. Numeric strings are
+    reported as numbers so untyped firmware still yields a measurement.
+    """
+    if value.HasField("invalid"):
+        return None, None, {}
+    arm = value.WhichOneof("value")
+    if arm is None:
+        return None, None, {}
+    if arm in _NUMERIC_ARMS:
+        return VALUE_KIND_NUMBER, value_as_float(value), {}
+    if arm == "boolean_value":
+        return VALUE_KIND_BOOL, "on" if value.boolean_value else "off", {}
+    if arm == "string_value":
+        text = value.string_value
+        try:
+            number = float(text)
+        except ValueError:
+            return VALUE_KIND_STRING, text[:_MAX_STATE_LEN] or None, {}
+        if math.isfinite(number):
+            return VALUE_KIND_NUMBER, number, {}
+        return VALUE_KIND_STRING, text, {}
+
+    field = value.DESCRIPTOR.fields_by_name[arm]
+    if field.enum_type is not None:
+        name = value_as_enum_name(value)
+        if name is None:
+            return VALUE_KIND_ENUM, None, {}
+        friendly = _enum_friendly(field.enum_type.name, name)
+        return VALUE_KIND_ENUM, friendly, {"raw": name}
+    if field.message_type is not None:
+        fields = _message_fields(getattr(value, arm))
+        summary = ", ".join(f"{k}={v}" for k, v in fields.items())
+        return VALUE_KIND_COMPOSITE, summary[:_MAX_STATE_LEN] or None, fields
+    return None, None, {}
+
+
 __all__ = [
     "value_as_bool",
     "value_as_charge_state",
     "value_as_door_state",
     "value_as_enum_name",
     "value_as_float",
+    "value_as_native",
     "value_as_string",
     "value_as_window_state",
     "value_charging_active",

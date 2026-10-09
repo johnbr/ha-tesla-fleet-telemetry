@@ -53,6 +53,12 @@ def signal_dispatcher_topic(vin: str, name: str) -> str:
     return f"{DOMAIN}.{vin}.{name}"
 
 
+def signals_changed_topic(entry_id: str) -> str:
+    """Dispatcher signal sent when an entry's signal selection may have
+    changed, so the sensor platform can add/remove generic entities."""
+    return f"{DOMAIN}.{entry_id}.signals_changed"
+
+
 class TeslaTelemetryCoordinator:
     """Holds the latest sample per signal name for a single vehicle."""
 
