@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.9.0...v0.10.0) (2026-10-09)
+
+
+### Features
+
+* give catalog-added signals a generic sensor, added and removed live ([#17](https://github.com/johnbr/ha-tesla-fleet-telemetry/issues/17)) ([57c675c](https://github.com/johnbr/ha-tesla-fleet-telemetry/commit/57c675c8cbcdb7b62f6d03923555bcf52db1c619))
+
 ## [0.9.0](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.8.2...v0.9.0) (2026-10-09)
 
 
