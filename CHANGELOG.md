@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.8.2...v0.9.0) (2026-10-09)
+
+
+### Features
+
+* stream GpsHeading as a Heading sensor and a heading attribute on Location ([#15](https://github.com/johnbr/ha-tesla-fleet-telemetry/issues/15)) ([14ef883](https://github.com/johnbr/ha-tesla-fleet-telemetry/commit/14ef883b090c6a32bdbcb17bb40e6bb5c84c1dfd))
+
 ## [0.8.2](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.8.1...v0.8.2) (2026-09-30)
 
 
