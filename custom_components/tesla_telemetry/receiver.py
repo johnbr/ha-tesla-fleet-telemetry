@@ -70,8 +70,12 @@ class TeslaTelemetryView(HomeAssistantView):
 
         coordinator = self._coordinators.get(vin)
         if coordinator is None:
+            # %r, not %s: this VIN matched nothing configured, so it is only
+            # what the client cert's CN said, and repr() escapes any line
+            # break that could forge a log line. Past this point the VIN is
+            # one we were configured with.
             _LOGGER.warning(
-                "tesla_telemetry: no coordinator configured for vin=%s — "
+                "tesla_telemetry: no coordinator configured for vin=%r — "
                 "rejecting connection",
                 vin,
             )
