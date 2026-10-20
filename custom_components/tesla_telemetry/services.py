@@ -23,11 +23,15 @@ auto-resolves when there's exactly one entry configured):
 """
 from __future__ import annotations
 
+import functools
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 
+import aiohttp
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
@@ -39,7 +43,11 @@ from homeassistant.core import (
     SupportsResponse,
     callback,
 )
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.exceptions import (
+    HomeAssistantError,
+    ServiceValidationError,
+    Unauthorized,
+)
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import async_track_time_interval
 
@@ -160,6 +168,44 @@ def _entry_api(hass: HomeAssistant, entry: ConfigEntry) -> TeslaApi:
     return record["api"]
 
 
+_Handler = Callable[[ServiceCall], Awaitable[ServiceResponse]]
+
+
+def _admin_only(handler: _Handler) -> _Handler:
+    """Refuse the call unless it comes from an admin (or from HA itself).
+
+    For the services that change what the car streams, which Tesla bills per
+    signal, or what CA it trusts. HA's ``async_register_admin_service`` does
+    the same check; it is done here so it holds on every HA version the
+    integration supports.
+    """
+
+    @functools.wraps(handler)
+    async def _wrapper(call: ServiceCall) -> ServiceResponse:
+        if call.context.user_id:
+            user = await call.hass.auth.async_get_user(call.context.user_id)
+            if user is None:
+                raise Unauthorized(context=call.context)
+            if not user.is_admin:
+                raise Unauthorized(
+                    context=call.context, permission="admin"
+                )
+        return await handler(call)
+
+    return _wrapper
+
+
+async def _tesla_call[T](awaitable: Awaitable[T]) -> T:
+    """Await a Fleet API call, turning its failures into a readable
+    ``HomeAssistantError`` instead of a raw traceback in the UI."""
+    try:
+        return await awaitable
+    except TeslaApiError as err:
+        raise HomeAssistantError(f"Tesla API error {err.status}: {err}") from err
+    except (TimeoutError, aiohttp.ClientError) as err:
+        raise HomeAssistantError(f"could not reach Tesla: {err}") from err
+
+
 def _resolve_intervals(entry: ConfigEntry) -> dict[str, int]:
     """The ``{signal: interval}`` map to push to Tesla for this entry.
 
@@ -169,6 +215,12 @@ def _resolve_intervals(entry: ConfigEntry) -> dict[str, int]:
     ``_build_telemetry_config`` have a stable local name.
     """
     return resolve_effective_intervals(entry)
+
+
+def _with_data(entry: ConfigEntry, data: dict[str, Any]) -> SimpleNamespace:
+    """``entry`` as it will read once ``data`` is saved, for the resolver
+    (which only reads ``.data`` and ``.options``)."""
+    return SimpleNamespace(data=data, options=entry.options)
 
 
 def _build_telemetry_config(entry: ConfigEntry, ca_pem: str) -> TelemetryConfig:
@@ -215,8 +267,8 @@ async def _bootstrap_handler(call: ServiceCall) -> ServiceResponse:
 
     ca_pem = (call.data.get(ATTR_CA_PEM) or DEFAULT_CA_BUNDLE_PEM).strip() + "\n"
     cfg = _build_telemetry_config(entry, ca_pem)
-    response["telemetry_config"] = await api.set_fleet_telemetry_config(
-        entry.data[CONF_VIN], cfg
+    response["telemetry_config"] = await _tesla_call(
+        api.set_fleet_telemetry_config(entry.data[CONF_VIN], cfg)
     )
     _stamp_last_sync(hass, entry)
     _LOGGER.info(
@@ -233,7 +285,9 @@ async def _resync_handler(call: ServiceCall) -> ServiceResponse:
     api = _entry_api(hass, entry)
     ca_pem = (call.data.get(ATTR_CA_PEM) or DEFAULT_CA_BUNDLE_PEM).strip() + "\n"
     cfg = _build_telemetry_config(entry, ca_pem)
-    response = await api.set_fleet_telemetry_config(entry.data[CONF_VIN], cfg)
+    response = await _tesla_call(
+        api.set_fleet_telemetry_config(entry.data[CONF_VIN], cfg)
+    )
     _stamp_last_sync(hass, entry)
     _LOGGER.info(
         "tesla_telemetry: resync completed for vin=%s — %s",
@@ -251,7 +305,7 @@ async def _get_config_handler(call: ServiceCall) -> ServiceResponse:
     entry = _resolve_entry(hass, call.data.get(ATTR_ENTRY_ID))
     api = _entry_api(hass, entry)
     vin = entry.data[CONF_VIN]
-    response = await api.get_fleet_telemetry_config(vin)
+    response = await _tesla_call(api.get_fleet_telemetry_config(vin))
     _LOGGER.info(
         "tesla_telemetry: get_fleet_telemetry_config vin=%s synced=%s",
         vin,
@@ -271,7 +325,17 @@ async def _set_interval_preset_handler(call: ServiceCall) -> ServiceResponse:
     api = _entry_api(hass, entry)
     preset: str = call.data[ATTR_PRESET]
 
+    record = hass.data[DOMAIN][entry.entry_id]
+    previous_pushed = record.get("pushed_intervals")
     new_data = {**entry.data, CONF_INTERVAL_PRESET: preset}
+    # Saving the preset fires the entry's update listener, which re-pushes
+    # whenever the resolved intervals differ from the last push. This handler
+    # pushes itself (it may carry a ca_pem override, and returns Tesla's
+    # answer), so mark the new intervals as pushed first or Tesla would get
+    # the same config twice; restored below if the push fails.
+    record["pushed_intervals"] = resolve_effective_intervals(
+        _with_data(entry, new_data)
+    )
     hass.config_entries.async_update_entry(entry, data=new_data)
     # _build_telemetry_config now reads the just-saved preset.
     entry = hass.config_entries.async_get_entry(entry.entry_id)  # type: ignore[assignment]
@@ -279,7 +343,13 @@ async def _set_interval_preset_handler(call: ServiceCall) -> ServiceResponse:
 
     ca_pem = (call.data.get(ATTR_CA_PEM) or DEFAULT_CA_BUNDLE_PEM).strip() + "\n"
     cfg = _build_telemetry_config(entry, ca_pem)
-    response = await api.set_fleet_telemetry_config(entry.data[CONF_VIN], cfg)
+    try:
+        response = await _tesla_call(
+            api.set_fleet_telemetry_config(entry.data[CONF_VIN], cfg)
+        )
+    except HomeAssistantError:
+        record["pushed_intervals"] = previous_pushed
+        raise
     _stamp_last_sync(hass, entry)
     intervals = _resolve_intervals(entry)
     _LOGGER.info(
@@ -413,7 +483,7 @@ def async_register_services(hass: HomeAssistant) -> None:
         hass.services.async_register(
             DOMAIN,
             SERVICE_BOOTSTRAP,
-            _bootstrap_handler,
+            _admin_only(_bootstrap_handler),
             schema=_BOOTSTRAP_SCHEMA,
             supports_response=SupportsResponse.OPTIONAL,
         )
@@ -421,7 +491,7 @@ def async_register_services(hass: HomeAssistant) -> None:
         hass.services.async_register(
             DOMAIN,
             SERVICE_RESYNC,
-            _resync_handler,
+            _admin_only(_resync_handler),
             schema=_RESYNC_SCHEMA,
             supports_response=SupportsResponse.OPTIONAL,
         )
@@ -429,7 +499,7 @@ def async_register_services(hass: HomeAssistant) -> None:
         hass.services.async_register(
             DOMAIN,
             SERVICE_DUMP_PUBLIC_KEY,
-            _dump_public_key_handler,
+            _admin_only(_dump_public_key_handler),
             schema=_DUMP_KEY_SCHEMA,
             supports_response=SupportsResponse.ONLY,
         )
@@ -437,7 +507,7 @@ def async_register_services(hass: HomeAssistant) -> None:
         hass.services.async_register(
             DOMAIN,
             SERVICE_GET_CONFIG,
-            _get_config_handler,
+            _admin_only(_get_config_handler),
             schema=_GET_CONFIG_SCHEMA,
             supports_response=SupportsResponse.ONLY,
         )
@@ -445,7 +515,7 @@ def async_register_services(hass: HomeAssistant) -> None:
         hass.services.async_register(
             DOMAIN,
             SERVICE_SET_INTERVAL_PRESET,
-            _set_interval_preset_handler,
+            _admin_only(_set_interval_preset_handler),
             schema=_SET_PRESET_SCHEMA,
             supports_response=SupportsResponse.OPTIONAL,
         )

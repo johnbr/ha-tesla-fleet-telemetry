@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hmac
 import json
 
 DOMAIN = "tesla_telemetry"
@@ -281,6 +282,29 @@ WS_PATH = "/api/tesla_telemetry/ws"
 # Headers nginx injects after mTLS termination
 HEADER_PROXY_SECRET = "X-Tesla-Proxy-Secret"
 HEADER_VERIFIED_VIN = "X-Tesla-Verified-Vin"
+
+# The WebSocket view is unauthenticated as far as HA is concerned, and it is
+# reachable on HA's own port as well as through nginx: the proxy secret is the
+# only thing that stops a caller who can reach HA from posing as a vehicle
+# (VINs are not secret). The config flow generates 64 hex characters; this is
+# the floor it accepts for a hand-typed one.
+MIN_PROXY_SECRET_LENGTH = 32
+
+
+def proxy_secret_is_strong(secret: str) -> bool:
+    """Whether ``secret`` is long enough to be the proxy's shared secret."""
+    return len(secret.strip()) >= MIN_PROXY_SECRET_LENGTH
+
+
+def proxy_secret_matches(presented: str, configured: str | None) -> bool:
+    """Constant-time check of the header nginx sent against the secret
+    configured for the vehicle it claims to be. An unknown vehicle
+    (``configured`` is None) or an empty secret never matches."""
+    if not configured:
+        return False
+    return hmac.compare_digest(
+        presented.encode("utf-8"), configured.encode("utf-8")
+    )
 
 # --- Tesla Fleet API endpoints ---------------------------------------
 # User OAuth refresh (refresh_token grant). Region-agnostic.

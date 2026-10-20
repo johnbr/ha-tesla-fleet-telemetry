@@ -60,8 +60,10 @@ from .const import (
     DEFAULT_ALLOW_VEHICLE_COMMANDS,
     DEFAULT_REGION,
     DOMAIN,
+    MIN_PROXY_SECRET_LENGTH,
     SELECTABLE_REGIONS,
     oauth_scopes,
+    proxy_secret_is_strong,
     region_from_access_token,
 )
 from .signals import build_options_schema, parse_options_input
@@ -275,6 +277,9 @@ class TeslaTelemetryOAuth2FlowHandler(
             )
             if pem_error:
                 errors[CONF_PRIVATE_KEY_PEM] = pem_error
+            # The secret is the WebSocket endpoint's only authentication.
+            if not proxy_secret_is_strong(user_input.get(CONF_PROXY_SECRET, "")):
+                errors[CONF_PROXY_SECRET] = "weak_proxy_secret"
 
             if not errors:
                 assert self._oauth_data is not None
@@ -297,7 +302,7 @@ class TeslaTelemetryOAuth2FlowHandler(
                     CONF_HOSTNAME: user_input[CONF_HOSTNAME].strip(),
                     CONF_PORT: int(user_input[CONF_PORT]),
                     CONF_PARTNER_DOMAIN: user_input[CONF_PARTNER_DOMAIN].strip(),
-                    CONF_PROXY_SECRET: user_input[CONF_PROXY_SECRET],
+                    CONF_PROXY_SECRET: user_input[CONF_PROXY_SECRET].strip(),
                     CONF_PRIVATE_KEY_PEM: user_input[CONF_PRIVATE_KEY_PEM],
                 }
                 return self.async_create_entry(title=title, data=data)
@@ -331,6 +336,9 @@ class TeslaTelemetryOAuth2FlowHandler(
             step_id="endpoint",
             data_schema=self.add_suggested_values_to_schema(schema, suggested),
             errors=errors,
+            description_placeholders={
+                "min_secret_length": str(MIN_PROXY_SECRET_LENGTH)
+            },
         )
 
 

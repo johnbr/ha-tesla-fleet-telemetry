@@ -20,6 +20,7 @@ from .const import (
     DEFAULT_ALLOW_VEHICLE_COMMANDS,
     DEFAULT_REGION,
     DOMAIN,
+    proxy_secret_is_strong,
 )
 from .coordinator import TeslaTelemetryCoordinator, signals_changed_topic
 from .receiver import TeslaTelemetryView
@@ -90,25 +91,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     # The HTTP view is registered once per HA instance and routes incoming
-    # WS connections to the right coordinator by VIN. Multiple entries
-    # (one per vehicle) share the same view.
+    # WS connections to the right coordinator by VIN, authenticating each
+    # against that vehicle's entry's proxy secret. Multiple entries (one per
+    # vehicle) share the same view and these two maps.
     coordinators_by_vin: dict[str, TeslaTelemetryCoordinator] = (
         domain_data.setdefault("coordinators_by_vin", {})
     )
+    secrets_by_vin: dict[str, str] = domain_data.setdefault("secrets_by_vin", {})
     coordinators_by_vin[vin] = coordinator
+    secrets_by_vin[vin] = proxy_secret
+
+    if not proxy_secret_is_strong(proxy_secret):
+        # The config flow now requires this for new entries; an older one keeps
+        # working, but the secret is the endpoint's only authentication.
+        _LOGGER.warning(
+            "tesla_telemetry: %s has a proxy secret shorter than the config "
+            "flow's minimum — anyone who can reach Home Assistant could guess "
+            "it and pose as the vehicle. Re-add the integration to generate a "
+            "strong one",
+            entry.title,
+        )
 
     if "view" not in domain_data:
-        view = TeslaTelemetryView(coordinators_by_vin, proxy_secret)
+        view = TeslaTelemetryView(coordinators_by_vin, secrets_by_vin)
         hass.http.register_view(view)
         domain_data["view"] = view
         _LOGGER.info(
             "tesla_telemetry: WebSocket view registered at /api/tesla_telemetry/ws"
-        )
-    elif proxy_secret and proxy_secret != domain_data["view"]._proxy_secret:
-        _LOGGER.warning(
-            "tesla_telemetry: entry %s has a different proxy secret than the "
-            "first entry; the first secret remains in effect",
-            entry.entry_id,
         )
 
     domain_data[entry.entry_id] = {
@@ -239,10 +248,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         record = domain_data.pop(entry.entry_id, None)
         if record is not None:
             domain_data.get("coordinators_by_vin", {}).pop(record["vin"], None)
+            domain_data.get("secrets_by_vin", {}).pop(record["vin"], None)
         # The view + services stay registered: HA does not support
         # unregistering them without a restart. With no entries left, the
-        # view's empty routing table will reject any subsequent
-        # connections with 403, and the services raise ServiceValidationError.
+        # view's empty routing table rejects any subsequent connection with
+        # 401, and the services raise ServiceValidationError.
     return unload_ok
 
 

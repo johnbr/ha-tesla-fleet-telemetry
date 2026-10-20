@@ -106,8 +106,9 @@ Entity IDs follow the vehicle's name, e.g. `sensor.<vehicle>_speed`,
     Tesla's fleet CA,
   * proxies the WebSocket upgrade to Home Assistant,
   * injects the `X-Tesla-Proxy-Secret` and `X-Tesla-Verified-Vin` headers.
-* Python packages `cryptography`, `protobuf`, and `flatbuffers` — declared in
-  `manifest.json` and installed automatically by Home Assistant.
+* Python packages `protobuf` and `flatbuffers`, declared in `manifest.json`
+  and installed automatically by Home Assistant (`cryptography` ships with
+  Home Assistant itself).
 
 ## Setup
 
@@ -176,19 +177,30 @@ server {
 }
 ```
 
-The proxy secret is any shared string; the integration generates one for you
-in the config flow, and you paste that same value into the `proxy_set_header`
-line above.
+The proxy secret is a shared string of at least 32 characters; the
+integration generates a 64-character one for you in the config flow, and you
+paste that same value into the `proxy_set_header` line above.
+
+> **Keep the proxy secret secret.** `/api/tesla_telemetry/ws` is served by
+> Home Assistant's own HTTP server, so it is reachable wherever Home Assistant
+> is — not only through nginx — and Home Assistant does not ask for a login on
+> it. The secret is what tells a real, mTLS-verified vehicle connection apart
+> from anyone else claiming a VIN (VINs are not secret). Don't publish the
+> nginx config, and if the secret leaks, delete and re-add the integration to
+> get a new one. `proxy_set_header` replaces any `X-Tesla-*` header a client
+> sends, so nginx itself can't be used to forge them.
 
 ### 3. Install the integration
 
-Until this repository is published in the default HACS store, add it as a
-custom repository:
+[![Open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=johnbr&repository=ha-tesla-fleet-telemetry&category=integration)
 
-1. HACS → ⋯ → **Custom repositories** → add
-   `https://github.com/johnbr/ha-tesla-fleet-telemetry` as type *Integration*.
-2. Install **Tesla Fleet Telemetry**.
-3. Restart Home Assistant.
+1. In HACS, search for **Tesla Fleet Telemetry** and download it (or use the
+   button above).
+2. Restart Home Assistant.
+
+If your HACS doesn't list it, add it as a custom repository first: HACS → ⋯ →
+**Custom repositories** → `https://github.com/johnbr/ha-tesla-fleet-telemetry`,
+type *Integration*, then continue from step 1.
 
 (Manual install: copy `custom_components/tesla_telemetry` into your Home
 Assistant `config/custom_components/` directory and restart.)
@@ -265,6 +277,10 @@ its own Home Assistant device with its own entities. Service calls take an
 `entry_id` to select the vehicle when more than one is configured.
 
 ## Services
+
+All services except `navigate` are **admin-only**: they change what the car
+streams (and so what Tesla bills), the CA it trusts, or expose the partner
+setup.
 
 | Service | Purpose |
 | --- | --- |

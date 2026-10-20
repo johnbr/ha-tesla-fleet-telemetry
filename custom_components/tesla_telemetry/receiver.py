@@ -5,7 +5,9 @@ proxies the WS upgrade to ``/api/tesla_telemetry/ws`` on HA's HTTP server
 with two custom headers:
 
   * ``X-Tesla-Proxy-Secret``  — shared secret only nginx knows; rejects any
-    caller that didn't go through the proxy.
+    caller that didn't go through the proxy. Checked against the secret of
+    the config entry for the claimed VIN, so each entry's own secret is in
+    force (and stops being accepted once that entry is removed).
   * ``X-Tesla-Verified-Vin``  — cert subject DN from the validated client
     cert. The CN is the vehicle's device id (typically the VIN).
 
@@ -14,7 +16,6 @@ keyed by VIN; entities subscribe to the coordinator separately.
 """
 from __future__ import annotations
 
-import hmac
 import logging
 from typing import TYPE_CHECKING
 
@@ -23,7 +24,12 @@ from aiohttp import WSMsgType, web
 
 from homeassistant.components.http import HomeAssistantView
 
-from .const import HEADER_PROXY_SECRET, HEADER_VERIFIED_VIN, WS_PATH
+from .const import (
+    HEADER_PROXY_SECRET,
+    HEADER_VERIFIED_VIN,
+    WS_PATH,
+    proxy_secret_matches,
+)
 from .proto import tesla_envelope_generated as fbgen
 from .proto import vehicle_data_pb2 as vdp
 
@@ -43,43 +49,33 @@ class TeslaTelemetryView(HomeAssistantView):
     def __init__(
         self,
         coordinators_by_vin: dict[str, TeslaTelemetryCoordinator],
-        proxy_secret: str,
+        secrets_by_vin: dict[str, str],
     ) -> None:
+        # Both maps are shared with __init__ and kept current as entries are
+        # set up and unloaded, so the view always routes and authenticates
+        # against the live set of entries.
         self._coordinators = coordinators_by_vin
-        self._proxy_secret = proxy_secret
+        self._secrets = secrets_by_vin
 
     async def get(self, request: web.Request) -> web.StreamResponse:
-        secret = request.headers.get(HEADER_PROXY_SECRET, "")
-        if not self._proxy_secret or not hmac.compare_digest(
-            secret, self._proxy_secret
-        ):
-            _LOGGER.warning(
-                "tesla_telemetry: rejecting ws connection — bad %s header",
-                HEADER_PROXY_SECRET,
-            )
-            return web.Response(status=401, text="unauthorized")
-
         verified_dn = request.headers.get(HEADER_VERIFIED_VIN, "")
         vin = _vin_from_subject_dn(verified_dn)
-        if not vin:
+        secret = request.headers.get(HEADER_PROXY_SECRET, "")
+        coordinator = self._coordinators.get(vin) if vin else None
+        # One answer for an unknown VIN and a wrong secret, so an
+        # unauthenticated caller can't probe which VINs are configured. Before
+        # this check the VIN is only what the request said, so it is logged
+        # through _loggable(), which strips the line breaks that could forge a
+        # log line.
+        if coordinator is None or not proxy_secret_matches(
+            secret, self._secrets.get(vin)
+        ):
             _LOGGER.warning(
-                "tesla_telemetry: cannot extract VIN from subject dn %r",
-                verified_dn,
+                "tesla_telemetry: rejecting ws connection for vin=%s — unknown "
+                "VIN or bad X-Tesla-Proxy-Secret header",
+                _loggable(vin),
             )
-            return web.Response(status=400, text="missing vin")
-
-        coordinator = self._coordinators.get(vin)
-        if coordinator is None:
-            # %r, not %s: this VIN matched nothing configured, so it is only
-            # what the client cert's CN said, and repr() escapes any line
-            # break that could forge a log line. Past this point the VIN is
-            # one we were configured with.
-            _LOGGER.warning(
-                "tesla_telemetry: no coordinator configured for vin=%r — "
-                "rejecting connection",
-                vin,
-            )
-            return web.Response(status=403, text="vin not configured")
+            return web.Response(status=401, text="unauthorized")
 
         # NOTE: compress=False is mandatory. Hermes/1.16.9 (vehicle_device)
         # advertises permessage-deflate in the upgrade request but closes
@@ -108,6 +104,12 @@ class TeslaTelemetryView(HomeAssistantView):
                 ws.close_code,
             )
         return ws
+
+
+def _loggable(value: str, limit: int = 64) -> str:
+    """An untrusted header value made safe for one log line: CR/LF removed so
+    it can't start a forged line, and length-capped."""
+    return value.replace("\r", "").replace("\n", "")[:limit]
 
 
 def _vin_from_subject_dn(dn: str) -> str:
@@ -180,7 +182,7 @@ def _dispatch_vehicle_data(
     if payload.vin and payload.vin != coordinator.vin:
         _LOGGER.warning(
             "tesla_telemetry: payload vin %s != cert vin %s",
-            payload.vin,
+            _loggable(payload.vin),
             coordinator.vin,
         )
 
