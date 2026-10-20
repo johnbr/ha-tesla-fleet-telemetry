@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.2](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.10.1...v0.10.2) (2026-10-20)
+
+
+### Bug Fixes
+
+* harden the telemetry endpoint and admin services ahead of HACS review ([#26](https://github.com/johnbr/ha-tesla-fleet-telemetry/issues/26)) ([6ebf041](https://github.com/johnbr/ha-tesla-fleet-telemetry/commit/6ebf0418bd6718ffae046a9c731f89e4d53ff8eb))
+
 ## [0.10.1](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.10.0...v0.10.1) (2026-10-14)
 
 
