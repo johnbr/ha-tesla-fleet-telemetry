@@ -95,8 +95,8 @@ set_interval_preset:
     higher ceilings on slower-moving signals — Tesla still pushes on
     change, the interval is just the maximum frequency).
 
-    `high_rate` drops Location/VehicleSpeed/Gear and the live charging
-    power signals to ~1 s for live-trace style use.  Switch back to
+    `high_rate` drops Location and VehicleSpeed to ~1 s for live-trace
+    style use; every other signal keeps its configured interval.  Switch back to
     `default` afterwards — the preset is persisted to entry storage so it
     survives a HA restart.
   fields:

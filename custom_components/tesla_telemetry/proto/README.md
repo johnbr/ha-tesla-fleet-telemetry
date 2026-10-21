@@ -5,6 +5,15 @@ Tesla's telemetry stream uses a two-layer wire format:
 1. **Outer envelope** — FlatBuffers `FlatbuffersEnvelope { txid, topic, message: Message (union of FlatbuffersStream | FlatbuffersStreamAck), message_id }`. Tesla does **not** publish the `.fbs` source; only the generated Go bindings are public. `schemas/tesla_envelope.fbs` is reconstructed from those bindings (see commit pin below).
 2. **Inner payload** — Protobuf. The concrete message type depends on the envelope `topic`: `"V"` → `telemetry.vehicle_data.Payload`, `"alerts"` → `telemetry.vehicle_alerts.VehicleAlerts`, etc. The `.proto` files come unmodified from the upstream repo.
 
+## License
+
+Everything in this directory comes from, or is generated from,
+[teslamotors/fleet-telemetry](https://github.com/teslamotors/fleet-telemetry), which is
+licensed under the Apache License 2.0: the `.proto` schemas unmodified, the `.fbs`
+reconstructed from that repository's Go bindings, and the Python bindings generated from both.
+A copy of that license is in [`LICENSE`](LICENSE) beside these files, and it governs them. The
+repository's own MIT `LICENSE` covers the rest of the integration, not this directory.
+
 ## Source provenance
 
 | Source                                | Commit (pinned)                            |
@@ -30,6 +39,8 @@ for f in vehicle_alert vehicle_connectivity vehicle_data vehicle_error vehicle_m
   curl -sSfL -o "schemas/${f}.proto" \
     "https://raw.githubusercontent.com/teslamotors/fleet-telemetry/${SHA}/protos/${f}.proto"
 done
+curl -sSfL -o LICENSE \
+  "https://raw.githubusercontent.com/teslamotors/fleet-telemetry/${SHA}/LICENSE"
 # tesla_envelope.fbs is hand-maintained: re-verify against
 # messages/tesla/Flatbuffers{Envelope,Stream,StreamAck,Message}.go at the new SHA.
 
