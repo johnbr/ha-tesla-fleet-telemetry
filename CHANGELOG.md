@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.3](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.10.2...v0.10.3) (2026-10-21)
+
+
+### Bug Fixes
+
+* ship the upstream Apache-2.0 license with the vendored proto files ([#28](https://github.com/johnbr/ha-tesla-fleet-telemetry/issues/28)) ([305db4b](https://github.com/johnbr/ha-tesla-fleet-telemetry/commit/305db4b1145838db34f20e31d7b0f495bce14041))
+
 ## [0.10.2](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.10.1...v0.10.2) (2026-10-20)
 
 
