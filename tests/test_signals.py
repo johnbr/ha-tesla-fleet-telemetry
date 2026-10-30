@@ -235,3 +235,30 @@ def test_signal_from_generic_unique_id_rejects_others(unique_id: str) -> None:
 )
 def test_humanize_signal_name(signal: str, expected: str) -> None:
     assert signals.humanize_signal_name(signal) == expected
+
+
+# ---------------------------------------------------------------------------
+# minimum_delta — Tesla 400s the WHOLE config push without one where required
+# ---------------------------------------------------------------------------
+def test_self_driving_miles_has_required_minimum_delta() -> None:
+    # Tesla: "SelfDrivingMilesSinceReset requires minimum delta be explicitly
+    # set and >= 1" — and rejects every field with it.
+    assert const.SIGNAL_SELF_DRIVING_MILES in const.DEFAULT_INTERVALS_SECONDS
+    assert const.FIELD_MINIMUM_DELTAS[const.SIGNAL_SELF_DRIVING_MILES] >= 1
+
+
+def test_minimum_deltas_name_default_signals() -> None:
+    assert set(const.FIELD_MINIMUM_DELTAS) <= set(const.DEFAULT_INTERVALS_SECONDS)
+
+
+def test_field_config_serialises_minimum_delta_only_when_set() -> None:
+    spec = importlib.util.spec_from_file_location(
+        f"{_PKG}.tesla_api", _DIR / "tesla_api.py"
+    )
+    tesla_api = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = tesla_api
+    spec.loader.exec_module(tesla_api)
+    plain = tesla_api.TelemetryFieldConfig(interval_seconds=10)
+    assert plain.to_dict() == {"interval_seconds": 10}
+    delta = tesla_api.TelemetryFieldConfig(interval_seconds=10, minimum_delta=1)
+    assert delta.to_dict() == {"interval_seconds": 10, "minimum_delta": 1}
