@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.11.0...v0.11.1) (2026-10-30)
+
+
+### Bug Fixes
+
+* send the minimum_delta Tesla requires for SelfDrivingMilesSinceReset ([#34](https://github.com/johnbr/ha-tesla-fleet-telemetry/issues/34)) ([f05aa13](https://github.com/johnbr/ha-tesla-fleet-telemetry/commit/f05aa13b71bd34546120bf033f8cf82d44b65fdd))
+
 ## [0.11.0](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.10.3...v0.11.0) (2026-10-30)
 
 
