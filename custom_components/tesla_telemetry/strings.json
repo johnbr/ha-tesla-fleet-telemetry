@@ -71,7 +71,7 @@
         "sections": {
           "driving": {
             "name": "Driving & navigation",
-            "description": "Location, speed, gear, and active-route signals. 0 disables a signal."
+            "description": "Location, speed, gear, active-route and FSD-distance signals. 0 disables a signal."
           },
           "battery": {
             "name": "Battery & range",

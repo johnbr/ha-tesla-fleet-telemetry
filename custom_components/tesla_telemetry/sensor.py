@@ -64,6 +64,7 @@ from .const import (
     SIGNAL_MOTOR_STATOR_TEMP_REAR,
     SIGNAL_OUTSIDE_TEMP,
     SIGNAL_RATED_RANGE,
+    SIGNAL_SELF_DRIVING_MILES,
     SIGNAL_SOC,
     SIGNAL_SOFTWARE_UPDATE_DOWNLOAD_PCT,
     SIGNAL_SOFTWARE_UPDATE_INSTALL_PCT,
@@ -112,6 +113,7 @@ async def async_setup_entry(
             TimeToArrivalSensor(coordinator),
             GearSensor(coordinator),
             HeadingSensor(coordinator),
+            SelfDrivingMilesSensor(coordinator),
             # Battery / range
             BatteryLevelSensor(coordinator),
             SocSensor(coordinator),
@@ -400,6 +402,18 @@ class GearSensor(_BaseTelemetrySensor):
     def _handle(self, sample: SignalSample) -> None:
         name = value_as_enum_name(sample.value)
         self._attr_native_value = self._GEAR_MAP.get(name, name) if name else None
+
+
+SelfDrivingMilesSensor = _scalar_sensor(
+    signal=SIGNAL_SELF_DRIVING_MILES,
+    suffix="self_driving_miles_telemetry",
+    name="Self-driving distance",
+    device_class=SensorDeviceClass.DISTANCE,
+    # "Since reset": TOTAL_INCREASING treats a drop as a new cycle.
+    state_class=SensorStateClass.TOTAL_INCREASING,
+    unit=UnitOfLength.MILES,
+    precision=1,
+)
 
 
 # ---------------------------------------------------------------------------
