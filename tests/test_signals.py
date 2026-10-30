@@ -251,13 +251,36 @@ def test_minimum_deltas_name_default_signals() -> None:
     assert set(const.FIELD_MINIMUM_DELTAS) <= set(const.DEFAULT_INTERVALS_SECONDS)
 
 
-def test_field_config_serialises_minimum_delta_only_when_set() -> None:
+def _load_tesla_api(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
+    """tesla_api.py under the synthetic package. Its aiohttp and HA OAuth
+    imports are stubbed when absent — CI installs neither, and the dataclasses
+    under test use neither."""
+    for name in (
+        "aiohttp",
+        "homeassistant",
+        "homeassistant.helpers",
+        "homeassistant.helpers.config_entry_oauth2_flow",
+    ):
+        try:
+            importlib.import_module(name)
+        except ImportError:
+            stub = ModuleType(name)
+            stub.__path__ = []
+            stub.OAuth2Session = object
+            monkeypatch.setitem(sys.modules, name, stub)
     spec = importlib.util.spec_from_file_location(
         f"{_PKG}.tesla_api", _DIR / "tesla_api.py"
     )
-    tesla_api = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = tesla_api
-    spec.loader.exec_module(tesla_api)
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, spec.name, module)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_field_config_serialises_minimum_delta_only_when_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tesla_api = _load_tesla_api(monkeypatch)
     plain = tesla_api.TelemetryFieldConfig(interval_seconds=10)
     assert plain.to_dict() == {"interval_seconds": 10}
     delta = tesla_api.TelemetryFieldConfig(interval_seconds=10, minimum_delta=1)
