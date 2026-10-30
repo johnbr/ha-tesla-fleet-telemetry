@@ -62,7 +62,9 @@ Charging, User present
 
 *Self-driving distance* is the car's FSD odometer (`SelfDrivingMilesSinceReset`).
 Tesla streams no "FSD engaged" signal, so this counter rising while the car
-moves is the way to tell FSD is driving. It stays unknown on cars without FSD.
+moves is the way to tell FSD is driving. Tesla only streams it in whole-mile
+steps (a required `minimum_delta` of 1), so it moves once per FSD mile. It
+stays unknown on cars without FSD.
 
 Rear-wheel-drive cars only report the rear drive unit, so *Front motor stator
 temperature* stays unknown on them.

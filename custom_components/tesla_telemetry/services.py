@@ -65,6 +65,7 @@ from .const import (
     CONF_VIN,
     DEFAULT_ALLOW_VEHICLE_COMMANDS,
     DOMAIN,
+    FIELD_MINIMUM_DELTAS,
     INTERVAL_PRESET_OVERRIDES,
     VEHICLE_COMMANDS_SCOPE,
     scopes_from_access_token,
@@ -229,7 +230,10 @@ def _build_telemetry_config(entry: ConfigEntry, ca_pem: str) -> TelemetryConfig:
         port=int(entry.data[CONF_PORT]),
         ca=ca_pem,
         fields={
-            name: TelemetryFieldConfig(interval_seconds=interval)
+            name: TelemetryFieldConfig(
+                interval_seconds=interval,
+                minimum_delta=FIELD_MINIMUM_DELTAS.get(name),
+            )
             for name, interval in _resolve_intervals(entry).items()
         },
     )

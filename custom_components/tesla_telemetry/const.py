@@ -87,8 +87,9 @@ DEFAULT_INTERVALS_SECONDS: dict[str, int] = {
     SIGNAL_MINUTES_TO_ARRIVAL: 15,
     # FSD odometer — Tesla streams no "FSD engaged" state, so a rise in this
     # counter while moving is the only way to see FSD driving. It moves only
-    # while FSD is in control (silent on cars without FSD), and 10 s keeps
-    # that detectable within a few samples at ≤6 signals a minute.
+    # while FSD is in control (silent on cars without FSD). Tesla requires a
+    # minimum_delta of >= 1 mile (FIELD_MINIMUM_DELTAS), so it arrives once per
+    # FSD mile; 10 s only bounds back-to-back miles.
     SIGNAL_SELF_DRIVING_MILES: 10,
     # charging — fluctuates while charging, idle otherwise.
     # DetailedChargeState is the exception: a discrete enum (Disconnected /
@@ -142,6 +143,16 @@ DEFAULT_INTERVALS_SECONDS: dict[str, int] = {
     SIGNAL_MOTOR_STATOR_TEMP_REAR: 10,
     SIGNAL_MODULE_TEMP_MAX: 30,
     SIGNAL_MODULE_TEMP_MIN: 30,
+}
+
+# Per-field ``minimum_delta`` sent alongside the interval. Tesla REJECTS the
+# whole fleet_telemetry_config (HTTP 400, every field) when a field that
+# requires one is pushed without it — so a missing entry here doesn't just
+# drop that signal, it stops the config push and, ~30 days later, the stream.
+# Units are the signal's own (miles for SelfDrivingMilesSinceReset, which
+# must be explicitly >= 1).
+FIELD_MINIMUM_DELTAS: dict[str, float] = {
+    SIGNAL_SELF_DRIVING_MILES: 1,
 }
 
 # Curated grouping of the default signals into collapsible sections for the

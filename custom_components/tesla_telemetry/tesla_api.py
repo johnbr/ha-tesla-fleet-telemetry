@@ -80,12 +80,17 @@ class TeslaAuthError(TeslaApiError):
 @dataclass(slots=True)
 class TelemetryFieldConfig:
     """One field's streaming policy. `interval_seconds` is the floor —
-    Tesla pushes on change but never faster than this."""
+    Tesla pushes on change but never faster than this. `minimum_delta`, when
+    set, also suppresses changes smaller than it (required by some fields)."""
 
     interval_seconds: int
+    minimum_delta: float | None = None
 
-    def to_dict(self) -> dict[str, int]:
-        return {"interval_seconds": self.interval_seconds}
+    def to_dict(self) -> dict[str, float]:
+        out: dict[str, float] = {"interval_seconds": self.interval_seconds}
+        if self.minimum_delta is not None:
+            out["minimum_delta"] = self.minimum_delta
+        return out
 
 
 @dataclass(slots=True)
