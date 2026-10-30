@@ -25,14 +25,14 @@ sends a destination to the car's navigation and is off until you enable it
 
 ## Entities
 
-One Home Assistant **device per vehicle**, carrying 47 entities by default.
+One Home Assistant **device per vehicle**, carrying 48 entities by default.
 Add the integration once per VIN to track multiple cars. Each signal you add
 from the catalog adds one more sensor (see [Choosing signals](#choosing-signals)).
 
 | Platform | Count | Examples |
 | --- | --- | --- |
 | `device_tracker` | 2 | Location, Route (active nav destination) |
-| `sensor` | 30 | Speed, State of charge, Charging state, Inside temperature, Motor stator temperatures, Signals received |
+| `sensor` | 31 | Speed, State of charge, Charging state, Inside temperature, Motor stator temperatures, Signals received |
 | `binary_sensor` | 15 | Doors ×6, Windows ×4, Lock, Charge port door, Charge cable, Charging, User present |
 
 <details>
@@ -42,7 +42,7 @@ from the catalog adds one more sensor (see [Choosing signals](#choosing-signals)
 
 **Sensors**
 * *Driving & navigation*: Speed, Heading, Gear, Distance to arrival,
-  Time to arrival
+  Time to arrival, Self-driving distance
 * *Battery & range*: Battery level, State of charge, Battery range,
   Rated range
 * *Charging*: Charging state, AC charging power, DC charging power,
@@ -59,6 +59,10 @@ from the catalog adds one more sensor (see [Choosing signals](#choosing-signals)
 **Binary sensors**: Front/rear driver/passenger doors, Frunk, Trunk,
 Front/rear driver/passenger windows, Lock, Charge port door, Charge cable,
 Charging, User present
+
+*Self-driving distance* is the car's FSD odometer (`SelfDrivingMilesSinceReset`).
+Tesla streams no "FSD engaged" signal, so this counter rising while the car
+moves is the way to tell FSD is driving. It stays unknown on cars without FSD.
 
 Rear-wheel-drive cars only report the rear drive unit, so *Front motor stator
 temperature* stays unknown on them.

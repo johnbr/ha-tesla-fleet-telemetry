@@ -20,6 +20,7 @@ SIGNAL_DESTINATION_NAME = "DestinationName"
 SIGNAL_DESTINATION_LOCATION = "DestinationLocation"
 SIGNAL_MILES_TO_ARRIVAL = "MilesToArrival"
 SIGNAL_MINUTES_TO_ARRIVAL = "MinutesToArrival"
+SIGNAL_SELF_DRIVING_MILES = "SelfDrivingMilesSinceReset"
 # ----- Battery / range -----
 SIGNAL_BATTERY_LEVEL = "BatteryLevel"
 SIGNAL_SOC = "Soc"
@@ -84,6 +85,11 @@ DEFAULT_INTERVALS_SECONDS: dict[str, int] = {
     SIGNAL_DESTINATION_LOCATION: 1,
     SIGNAL_MILES_TO_ARRIVAL: 15,
     SIGNAL_MINUTES_TO_ARRIVAL: 15,
+    # FSD odometer — Tesla streams no "FSD engaged" state, so a rise in this
+    # counter while moving is the only way to see FSD driving. It moves only
+    # while FSD is in control (silent on cars without FSD), and 10 s keeps
+    # that detectable within a few samples at ≤6 signals a minute.
+    SIGNAL_SELF_DRIVING_MILES: 10,
     # charging — fluctuates while charging, idle otherwise.
     # DetailedChargeState is the exception: a discrete enum (Disconnected /
     # NoPower / Starting / Charging / Complete) that moves a handful of times
@@ -153,6 +159,7 @@ SIGNAL_CATEGORIES: dict[str, list[str]] = {
         SIGNAL_DESTINATION_LOCATION,
         SIGNAL_MILES_TO_ARRIVAL,
         SIGNAL_MINUTES_TO_ARRIVAL,
+        SIGNAL_SELF_DRIVING_MILES,
     ],
     "battery": [
         SIGNAL_BATTERY_LEVEL,
