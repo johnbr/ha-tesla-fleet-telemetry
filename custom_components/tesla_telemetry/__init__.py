@@ -133,8 +133,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async_register_services(hass)
     _async_check_command_scope(hass, entry)
 
-    # Daily check that re-pushes the telemetry config when it's >7 days old.
-    # No-op until the user has run `bootstrap` at least once.
+    # Daily check that re-pushes the telemetry config when it's >7 days old,
+    # so it never reaches Tesla's ~30-day `exp`. An entry that never pushed one
+    # itself adopts the config the car already holds (a re-added entry keeps
+    # the previous install's) instead of skipping the check for good.
     entry.async_on_unload(async_schedule_auto_resync(hass, entry))
 
     # Re-push the telemetry config whenever the user edits signals/intervals

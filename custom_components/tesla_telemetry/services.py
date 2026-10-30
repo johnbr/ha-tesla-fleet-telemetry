@@ -27,7 +27,7 @@ import functools
 import logging
 import time
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timedelta
+from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
 
@@ -50,6 +50,7 @@ from homeassistant.exceptions import (
 )
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.start import async_at_started
 
 from .commands import DEFAULT_LOCALE, NAV_ORDERS, CommandRefused
 from .const import (
@@ -538,36 +539,77 @@ def async_register_services(hass: HomeAssistant) -> None:
 # ---------------------------------------------------------------------
 async def _auto_resync_if_due(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Re-push fleet_telemetry_config when the last successful sync is
-    older than ``AUTO_RESYNC_MAX_AGE_SECONDS``. Skips silently if the
-    user hasn't bootstrapped yet (no ``last_sync_at`` recorded) — we
-    don't push a config they haven't authorized."""
+    older than ``AUTO_RESYNC_MAX_AGE_SECONDS``.
+
+    An entry with no ``last_sync_at`` never pushed a config itself — which is
+    also what a re-added entry looks like, and the car then still holds the
+    one the previous install pushed. That one expires ~30 days later and takes
+    the stream down with it, so adopt it instead of skipping forever.
+    """
     last = entry.data.get(CONF_LAST_SYNC_AT)
-    if not last:
-        return
-    age = time.time() - last
-    if age < AUTO_RESYNC_MAX_AGE_SECONDS:
+    if last and time.time() - last < AUTO_RESYNC_MAX_AGE_SECONDS:
         return
     try:
         api = _entry_api(hass, entry)
     except HomeAssistantError as err:
-        _LOGGER.debug("tesla_telemetry: auto-resync skipped — %s", err)
+        # Not debug: with no API client the config is never renewed, and the
+        # only symptom is the stream stopping a month later.
+        _LOGGER.warning(
+            "tesla_telemetry: auto-resync skipped for vin=%s — %s",
+            entry.data[CONF_VIN],
+            err,
+        )
         return
+    if not last:
+        record = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+        if record is not None and record.get("adopt_checked"):
+            # Asked once this run already and the answer was "not ours".
+            return
+        try:
+            reported = await api.get_fleet_telemetry_config(entry.data[CONF_VIN])
+        except Exception as err:  # noqa: BLE001 — never surface from a timer tick
+            _LOGGER.warning(
+                "tesla_telemetry: cannot read the car's telemetry config for "
+                "vin=%s — %s",
+                entry.data[CONF_VIN],
+                err,
+            )
+            return
+        hostname = ((reported or {}).get("config") or {}).get("hostname")
+        if not hostname or hostname != entry.data.get(CONF_HOSTNAME):
+            # No config, or one pointing elsewhere: not ours to renew. Stop
+            # asking until the next start — nothing here changes on its own.
+            _LOGGER.debug(
+                "tesla_telemetry: vin=%s holds no config for %s — nothing to "
+                "renew",
+                entry.data[CONF_VIN],
+                entry.data.get(CONF_HOSTNAME),
+            )
+            if record is not None:
+                record["adopt_checked"] = True
+            return
+        _LOGGER.warning(
+            "tesla_telemetry: vin=%s holds a telemetry config this entry did "
+            "not push — re-pushing it so the daily renewal covers it",
+            entry.data[CONF_VIN],
+        )
+    age = int(time.time() - last) if last else None
     cfg = _build_telemetry_config(entry, DEFAULT_CA_BUNDLE_PEM.strip() + "\n")
     try:
         result = await api.set_fleet_telemetry_config(entry.data[CONF_VIN], cfg)
     except Exception as err:  # noqa: BLE001 — never surface from a timer tick
         _LOGGER.warning(
-            "tesla_telemetry: auto-resync failed for vin=%s after %ds: %s",
+            "tesla_telemetry: auto-resync failed for vin=%s%s: %s",
             entry.data[CONF_VIN],
-            int(age),
+            f" after {age}s" if age else "",
             err,
         )
         return
     _stamp_last_sync(hass, entry)
     _LOGGER.info(
-        "tesla_telemetry: auto-resync ok for vin=%s after %ds: %s",
+        "tesla_telemetry: auto-resync ok for vin=%s%s: %s",
         entry.data[CONF_VIN],
-        int(age),
+        f" after {age}s" if age else "",
         result,
     )
 
@@ -576,13 +618,24 @@ async def _auto_resync_if_due(hass: HomeAssistant, entry: ConfigEntry) -> None:
 def async_schedule_auto_resync(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> Any:
-    """Register the daily resync timer for an entry. Returns the cancel
+    """Register the daily resync check for an entry. Returns the cancel
     callable HA's entry-unload machinery should invoke when the entry
-    goes away."""
+    goes away.
 
-    async def _tick(now: datetime) -> None:
+    The interval restarts its countdown on every HA start, so on its own it
+    only fires once the instance has been up for 24 h straight — an instance
+    that restarts more often than that would never run the check at all. The
+    extra check turns a restart from "postpone" into "check now"; it costs a
+    dict lookup unless the config is actually due. It runs when HA has
+    finished starting (or at once, when the entry is set up later), so the
+    Tesla round-trip never lands in the middle of a cold boot.
+    """
+
+    async def _tick(_now: Any = None) -> None:
         await _auto_resync_if_due(hass, entry)
 
-    return async_track_time_interval(
+    unsub_interval = async_track_time_interval(
         hass, _tick, timedelta(seconds=AUTO_RESYNC_CHECK_INTERVAL_SECONDS)
     )
+    unsub_startup = async_at_started(hass, _tick)
+    return lambda: (unsub_interval(), unsub_startup())
