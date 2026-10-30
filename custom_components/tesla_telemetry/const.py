@@ -442,9 +442,12 @@ def _jwt_claims(token: str) -> dict | None:
 TOKEN_REFRESH_LEEWAY = 60
 
 # Auto-resync of fleet_telemetry_config — Tesla's `exp` field is ~30 days,
-# so we check daily and re-push if the last successful sync is more than
-# 7 days old. Survives HA restarts because `last_sync_at` lives in
-# entry.data.
+# so we check daily and re-push once the config the car reports expires
+# within 7 days. `last_sync_at` lives in entry.data so it survives HA
+# restarts; it is only the fallback for a response without an `exp`.
 CONF_LAST_SYNC_AT = "last_sync_at"
 AUTO_RESYNC_CHECK_INTERVAL_SECONDS = 24 * 3600
+# Renew when the car's config has less than this left before `exp`…
+AUTO_RESYNC_RENEW_BEFORE_SECONDS = 7 * 24 * 3600
+# …or, when Tesla reports no `exp`, when our last push is older than this.
 AUTO_RESYNC_MAX_AGE_SECONDS = 7 * 24 * 3600
