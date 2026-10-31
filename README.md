@@ -331,7 +331,10 @@ reports expires within 7 days, so no manual upkeep is required. The expiry comes
 from Tesla's own copy, so a last-sync stamp that no longer reflects reality (a
 restored backup, a push from another instance) does not delay the renewal. The
 check also runs once Home Assistant has started, because the daily interval
-restarts its countdown on every restart.
+restarts its countdown on every restart. When Tesla reports no expiry — the
+read fails, or the car reports no config at all, as it may once a config has
+lapsed — the integration falls back to its own stamp and re-pushes when its
+last push is more than 7 days old.
 
 An entry that has never pushed a config itself — one re-added after the v1 → v2
 migration, say — adopts the config the car already holds: if Tesla reports one

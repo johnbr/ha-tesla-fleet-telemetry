@@ -359,6 +359,33 @@ class TestRenewingWithoutAnExpiry:
         assert hass.stamps
 
 
+class TestRenewingWhenTheCarReportsNoConfig:
+    """A config this entry pushed may be dropped once it lapses, not reported
+    with a past ``exp`` — so the stamp decides, as when the read fails."""
+
+    @pytest.mark.parametrize("reported", [{}, {"config": None}, {"config": {}}])
+    def test_a_stale_stamp_is_renewed(
+        self, services: Any, monkeypatch: pytest.MonkeyPatch, reported: dict
+    ) -> None:
+        entry = Entry(last_sync_at=int(time.time()) - 8 * DAY)
+        api = FakeApi(reported)
+        hass = run(services, monkeypatch, entry, api)
+
+        assert len(api.pushed) == 1
+        assert entry.data["last_sync_at"] > int(time.time()) - DAY
+        assert hass.stamps
+
+    @pytest.mark.parametrize("reported", [{}, {"config": None}, {"config": {}}])
+    def test_a_fresh_stamp_is_left_alone(
+        self, services: Any, monkeypatch: pytest.MonkeyPatch, reported: dict
+    ) -> None:
+        entry = Entry(last_sync_at=int(time.time()) - DAY)
+        api = FakeApi(reported)
+        run(services, monkeypatch, entry, api)
+
+        assert api.pushed == []
+
+
 class TestRenewingWhenTheReadFails:
     """A failed read falls back to the stamp: the push may still work."""
 
