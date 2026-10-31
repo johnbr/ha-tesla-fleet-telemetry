@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.4](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.11.3...v0.11.4) (2026-10-31)
+
+
+### Bug Fixes
+
+* renew a stamped config the car no longer reports ([#44](https://github.com/johnbr/ha-tesla-fleet-telemetry/issues/44)) ([4ff5a00](https://github.com/johnbr/ha-tesla-fleet-telemetry/commit/4ff5a00842a6c52e1a96ad6c3981125f755634ff))
+
 ## [0.11.3](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.11.2...v0.11.3) (2026-10-31)
 
 
