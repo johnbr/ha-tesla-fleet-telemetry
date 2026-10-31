@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.5](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.11.4...v0.11.5) (2026-10-31)
+
+
+### Bug Fixes
+
+* hold the charge-energy-added peak within a session ([#47](https://github.com/johnbr/ha-tesla-fleet-telemetry/issues/47)) ([8244221](https://github.com/johnbr/ha-tesla-fleet-telemetry/commit/8244221a34a59410371d5e85aa4bb5b8e2b8cdec))
+
 ## [0.11.4](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.11.3...v0.11.4) (2026-10-31)
 
 
