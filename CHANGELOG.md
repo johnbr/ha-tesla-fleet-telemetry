@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.11.5...v0.12.0) (2026-10-31)
+
+
+### Features
+
+* serve TeslaMate's streaming protocol from the telemetry stream ([#46](https://github.com/johnbr/ha-tesla-fleet-telemetry/issues/46)) ([7961164](https://github.com/johnbr/ha-tesla-fleet-telemetry/commit/7961164e7fe393806baefc8499127aa8a7af2ed7))
+
 ## [0.11.5](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.11.4...v0.11.5) (2026-10-31)
 
 
