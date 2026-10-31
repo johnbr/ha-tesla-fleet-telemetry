@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.3](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.11.2...v0.11.3) (2026-10-31)
+
+
+### Bug Fixes
+
+* renew the telemetry config when the car's copy is about to expire ([#41](https://github.com/johnbr/ha-tesla-fleet-telemetry/issues/41)) ([a577d3d](https://github.com/johnbr/ha-tesla-fleet-telemetry/commit/a577d3da934da87801ee1766c1e420143f048345))
+
 ## [0.11.2](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.11.1...v0.11.2) (2026-10-31)
 
 
