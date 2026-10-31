@@ -31,7 +31,12 @@ from .services import (
 )
 from .signals import resolve_effective_intervals
 from .tesla_api import TeslaApi
-from .teslamate import ensure_vehicle_id, setup_bridge, unload_bridge
+from .teslamate import (
+    bridge_enabled,
+    ensure_vehicle_id,
+    setup_bridge,
+    unload_bridge,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -121,16 +126,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "tesla_telemetry: WebSocket view registered at /api/tesla_telemetry/ws"
         )
 
-    # Optional, self-contained: lets TeslaMate take its stream from us instead
-    # of paying for the same Fleet API data twice. See ``teslamate/``. The
-    # lookup is a no-op unless this entry predates the bridge.
-    await ensure_vehicle_id(hass, entry, api)
-    setup_bridge(hass, entry, vin, secrets_by_vin, coordinators_by_vin)
+    # Optional and off by default: lets TeslaMate take its stream from us
+    # instead of paying for the same Fleet API data twice. See ``teslamate/``.
+    # While it is off nothing is registered and no API call is made for it.
+    teslamate = bridge_enabled(entry)
+    if teslamate:
+        await ensure_vehicle_id(hass, entry, api)
+        setup_bridge(hass, entry, vin, secrets_by_vin, coordinators_by_vin)
 
     domain_data[entry.entry_id] = {
         "coordinator": coordinator,
         "vin": vin,
         "api": api,
+        "teslamate": teslamate,
         # Last config we pushed to the car, so the options-update listener can
         # skip redundant re-pushes. Assume the car already holds the current
         # resolved config (bootstrap/auto-resync keep it reconciled).
@@ -170,6 +178,11 @@ async def _async_options_updated(
     """
     record = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     if not record:
+        return
+    # Turning the TeslaMate bridge on or off changes what setup registers, so
+    # it needs a full reload rather than an in-place update.
+    if record.get("teslamate") != bridge_enabled(entry):
+        await hass.config_entries.async_reload(entry.entry_id)
         return
     _async_check_command_scope(hass, entry)
     coordinator: TeslaTelemetryCoordinator = record["coordinator"]

@@ -135,6 +135,18 @@ def test_unknown_shift_state_is_cached_but_never_framed():
         assert not row.apply("Gear", _shift(state))
 
 
+def test_an_unreadable_datum_updates_nothing_and_frames_nothing():
+    # Tesla sends ``invalid`` for a signal it cannot read. The cached value
+    # stands, but re-emitting it would tell TeslaMate the car just reported a
+    # state it did not.
+    row = _row()
+    row.apply("Location", _location(37.5, -122.25))
+    row.apply("Gear", _shift("ShiftStateD"))
+
+    assert not row.apply("Gear", vdp.Value(invalid=True))
+    assert row.cells["shift_state"] == "D"
+
+
 def test_untracked_signals_do_not_frame():
     row = _row()
     row.apply("Location", _location(37.5, -122.25))

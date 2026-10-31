@@ -37,8 +37,18 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+# Options key for the opt-in switch. Lives here rather than in const.py
+# because nothing outside the subpackage has any use for it.
+CONF_TESLAMATE_BRIDGE = "teslamate_bridge"
+
 _HUB = "teslamate_hub"
 _VEHICLE_IDS = "teslamate_vins_by_vehicle_id"
+_ENABLED = "teslamate_enabled_vins"
+
+
+def bridge_enabled(entry: ConfigEntry) -> bool:
+    """Whether this entry serves TeslaMate. Off unless the user opts in."""
+    return bool(entry.options.get(CONF_TESLAMATE_BRIDGE, False))
 
 
 async def ensure_vehicle_id(
@@ -55,7 +65,10 @@ async def ensure_vehicle_id(
     Best-effort: if the lookup fails the user's fallback is that environment
     variable, so this never fails setup.
     """
-    if entry.data.get(CONF_VEHICLE_ID):
+    # The key's presence, not its value, is what records that the lookup has
+    # been done — so a vehicle that will never report an id does not cost a
+    # list_vehicles call on every restart.
+    if CONF_VEHICLE_ID in entry.data:
         return
 
     vin = entry.data[CONF_VIN]
@@ -65,23 +78,25 @@ async def ensure_vehicle_id(
         _LOGGER.debug("tesla_telemetry: vehicle id lookup failed for %s: %s", vin, err)
         return
 
-    for vehicle in vehicles:
-        if vehicle.get("vin") != vin:
-            continue
-        # ``vehicle_id``/``id`` is the legacy numeric id TeslaMate streams
-        # under (its ``vid``); ``id_s`` is the Fleet API's own id (its
-        # ``eid``) and a different number, so it is only a last resort.
-        vehicle_id = (
-            vehicle.get("vehicle_id") or vehicle.get("id") or vehicle.get("id_s")
+    # Only ``vehicle_id``: it is the legacy numeric id TeslaMate streams under
+    # (its ``vid``). ``id`` and ``id_s`` are the Fleet API's own id (its
+    # ``eid``) — a different number — and taking one would map an id no
+    # subscription ever uses.
+    vehicle_id = next(
+        (
+            str(vehicle["vehicle_id"])
+            for vehicle in vehicles
+            if vehicle.get("vin") == vin and vehicle.get("vehicle_id")
+        ),
+        "",
+    )
+    hass.config_entries.async_update_entry(
+        entry, data={**entry.data, CONF_VEHICLE_ID: vehicle_id}
+    )
+    if vehicle_id:
+        _LOGGER.info(
+            "tesla_telemetry: recorded vehicle id %s for %s", vehicle_id, vin
         )
-        if vehicle_id:
-            hass.config_entries.async_update_entry(
-                entry, data={**entry.data, CONF_VEHICLE_ID: str(vehicle_id)}
-            )
-            _LOGGER.info(
-                "tesla_telemetry: recorded vehicle id %s for %s", vehicle_id, vin
-            )
-        return
 
 
 def setup_bridge(
@@ -100,6 +115,8 @@ def setup_bridge(
     """
     domain_data = hass.data.setdefault(DOMAIN, {})
     vehicle_ids: dict[str, str] = domain_data.setdefault(_VEHICLE_IDS, {})
+    enabled: set[str] = domain_data.setdefault(_ENABLED, set())
+    enabled.add(vin)
     # TeslaMate addresses a vehicle by Tesla's numeric id unless
     # TESLA_WSS_USE_VIN is set; accepting both spares the user that variable.
     # Entries created before the id was recorded are addressed by VIN.
@@ -110,7 +127,7 @@ def setup_bridge(
         hub = TeslaMateStreamHub(hass)
         hass.http.register_view(
             TeslaTelemetryStreamView(
-                hub, secrets_by_vin, vehicle_ids, coordinators_by_vin
+                hub, secrets_by_vin, vehicle_ids, enabled, coordinators_by_vin
             )
         )
         domain_data[_HUB] = hub
@@ -132,10 +149,19 @@ def setup_bridge(
 
 
 def unload_bridge(hass: HomeAssistant, vin: str) -> None:
-    """Forget this vehicle's id mapping. The view itself stays registered —
-    HA cannot unregister one without a restart — and rejects every connection
-    once the secret table it shares with the vehicle endpoint is empty."""
-    vehicle_ids = hass.data.get(DOMAIN, {}).get(_VEHICLE_IDS, {})
+    """Stop serving this vehicle, and drop any connection already open.
+
+    HA cannot unregister a view without a restart, so the view stays — but it
+    is no longer enabled for this VIN, so the next connection is refused, and
+    a client that is already connected is closed here rather than left reading
+    a stream its entry no longer authorises.
+    """
+    domain_data = hass.data.get(DOMAIN, {})
+    domain_data.get(_ENABLED, set()).discard(vin)
+    vehicle_ids = domain_data.get(_VEHICLE_IDS, {})
     for vehicle_id, mapped in list(vehicle_ids.items()):
         if mapped == vin:
             del vehicle_ids[vehicle_id]
+    hub: TeslaMateStreamHub | None = domain_data.get(_HUB)
+    if hub is not None:
+        hub.close_vin(vin)

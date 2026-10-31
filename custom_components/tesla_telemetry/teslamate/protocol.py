@@ -132,11 +132,24 @@ class StreamRow:
     dc_kw: float = 0.0
 
     def apply(self, name: str, value: Any) -> bool:
-        """Fold one datum in. True when a frame is due."""
+        """Fold one datum in. True when a frame is due.
+
+        A datum that carries nothing usable — Tesla sends ``invalid`` for a
+        signal it cannot read — updates nothing, and so triggers nothing: the
+        cached value stands, and re-emitting it would tell TeslaMate the car
+        just reported a state it did not.
+        """
+        updated = False
         if name == SIGNAL_AC_CHARGING_POWER:
-            self.ac_kw = value_as_float(value) or 0.0
+            charging = value_as_float(value)
+            if charging is not None:
+                self.ac_kw = charging
+                updated = True
         elif name == SIGNAL_DC_CHARGING_POWER:
-            self.dc_kw = value_as_float(value) or 0.0
+            charging = value_as_float(value)
+            if charging is not None:
+                self.dc_kw = charging
+                updated = True
 
         for column, signal in _COLUMN_SIGNAL.items():
             if signal != name or column not in self.columns:
@@ -144,8 +157,9 @@ class StreamRow:
             cell = _cell(column, value)
             if cell is not None:
                 self.cells[column] = cell
+                updated = True
 
-        return name in _TRIGGER_SIGNALS and self._complete()
+        return updated and name in _TRIGGER_SIGNALS and self._complete()
 
     def _complete(self) -> bool:
         """Whether the cached row can become a position."""

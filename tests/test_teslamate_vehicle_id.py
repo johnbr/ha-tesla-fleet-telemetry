@@ -72,8 +72,8 @@ def test_the_id_is_recorded_from_the_matching_vehicle():
     hass = _hass()
     api = _Api(
         [
-            {"vin": "5YJ3E1EA7KF000001", "id_s": "1"},
-            {"vin": VIN, "id_s": VID},
+            {"vin": "5YJ3E1EA7KF000001", "vehicle_id": "1"},
+            {"vin": VIN, "vehicle_id": VID},
         ]
     )
     entry = _Entry({"vin": VIN})
@@ -86,20 +86,20 @@ def test_the_id_is_recorded_from_the_matching_vehicle():
     assert entry.data["vin"] == VIN
 
 
-def test_the_legacy_id_keys_are_accepted():
-    # The Fleet API has spelled this field more than one way over time.
-    for key in ("vehicle_id", "id", "id_s"):
+def test_only_the_legacy_id_is_taken():
+    # ``id`` and ``id_s`` are the Fleet API's own id (TeslaMate's ``eid``), a
+    # different number from the ``vid`` it streams under. Storing one would
+    # map an id no subscription ever uses, so neither is a fallback.
+    for key in ("id", "id_s"):
         hass = _hass()
         entry = _Entry({"vin": VIN})
         asyncio.run(
             teslamate.ensure_vehicle_id(hass, entry, _Api([{"vin": VIN, key: VID}]))
         )
-        assert entry.data.get("vehicle_id") == VID, key
+        assert entry.data.get("vehicle_id") == "", key
 
 
-def test_the_legacy_id_wins_over_the_fleet_api_id():
-    # id_s is TeslaMate's eid, not the vid it streams under — a different
-    # number. Taking it would map an id no subscription ever uses.
+def test_the_legacy_id_wins_when_both_are_listed():
     hass = _hass()
     entry = _Entry({"vin": VIN})
     api = _Api([{"vin": VIN, "vehicle_id": VID, "id_s": "929799867918428"}])
@@ -107,6 +107,20 @@ def test_the_legacy_id_wins_over_the_fleet_api_id():
     asyncio.run(teslamate.ensure_vehicle_id(hass, entry, api))
 
     assert entry.data["vehicle_id"] == VID
+
+
+def test_a_miss_is_remembered_so_it_is_looked_up_once():
+    # Writing the empty key is what records that the lookup has been done.
+    hass = _hass()
+    entry = _Entry({"vin": VIN})
+    api = _Api([{"vin": "5YJ3E1EA7KF000001", "vehicle_id": "1"}])
+
+    asyncio.run(teslamate.ensure_vehicle_id(hass, entry, api))
+    assert api.calls == 1
+    assert entry.data["vehicle_id"] == ""
+
+    asyncio.run(teslamate.ensure_vehicle_id(hass, entry, api))
+    assert api.calls == 1, "a remembered miss must not call the API again"
 
 
 def test_a_failing_lookup_does_not_break_setup():
@@ -119,7 +133,7 @@ def test_a_failing_lookup_does_not_break_setup():
     assert "vehicle_id" not in entry.data
 
 
-def test_a_vehicle_missing_from_the_account_records_nothing():
+def test_a_vehicle_missing_from_the_account_records_no_id():
     hass = _hass()
     entry = _Entry({"vin": VIN})
 
@@ -127,13 +141,13 @@ def test_a_vehicle_missing_from_the_account_records_nothing():
         teslamate.ensure_vehicle_id(hass, entry, _Api([{"vin": "5YJ3E1EA7KF000001"}]))
     )
 
-    assert hass.config_entries.updates == []
+    assert entry.data["vehicle_id"] == ""
 
 
-def test_a_vehicle_without_any_id_field_records_nothing():
+def test_a_vehicle_without_an_id_still_records_the_attempt():
     hass = _hass()
     entry = _Entry({"vin": VIN})
 
     asyncio.run(teslamate.ensure_vehicle_id(hass, entry, _Api([{"vin": VIN}])))
 
-    assert hass.config_entries.updates == []
+    assert entry.data["vehicle_id"] == ""

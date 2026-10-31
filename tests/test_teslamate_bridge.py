@@ -53,11 +53,12 @@ class _Coordinator:
         return self._samples.get(name)
 
 
-def _view(coordinator):
+def _view(coordinator, *, enabled: bool = True):
     return bridge.TeslaTelemetryStreamView(
         SimpleNamespace(),
         {VIN: SECRET},
         {VID: VIN},
+        {VIN} if enabled else set(),
         {VIN: coordinator} if coordinator is not None else {},
     )
 

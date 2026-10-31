@@ -290,43 +290,64 @@ Tesla. TeslaMate reads from `TESLA_WSS_HOST`, and this integration serves that
 protocol at `/api/tesla_telemetry/streaming/`, so the car streams once and both
 systems read it.
 
+**Enable it first.** It is off by default: open **Settings → Devices &
+Services → Tesla Fleet Telemetry → Configure → TeslaMate bridge** and turn it
+on. Nothing is served, and no extra API call is made, while it is off. The
+change takes effect when the entry reloads.
+
 The reverse proxy is required, not optional: TeslaMate's only setting is the
 host, and it cannot send a header of its own. The proxy is what adds the same
 `X-Tesla-Proxy-Secret` the vehicle endpoint uses, so the TeslaMate hop carries
-no credential and needs no second secret. Add a location for it:
+no credential and needs no second secret.
 
 TeslaMate appends `/streaming/` to whatever host you give it, so the location
-is exactly that path:
+is exactly that path. Use a **complete `server` block on a LAN address**, not a
+bare `location` in your public one — with the secret injected, anyone who can
+reach it gets a live feed of the car's location:
 
 ```nginx
-location /streaming/ {
-    proxy_pass http://127.0.0.1/api/tesla_telemetry/streaming/;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade    $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header X-Tesla-Proxy-Secret "REPLACE-WITH-YOUR-PROXY-SECRET";
-    proxy_read_timeout 1h;
+server {
+    # A LAN address: this listener is not reachable from the internet even if
+    # the host has a public interface.
+    listen 192.168.1.10:8081;
+    server_name teslamate-bridge.lan;
+
+    # Belt and braces, in case the listen address above is ever widened.
+    allow 192.168.0.0/16;
+    allow 10.0.0.0/8;
+    allow 172.16.0.0/12;
+    deny all;
+
+    location /streaming/ {
+        proxy_pass http://127.0.0.1/api/tesla_telemetry/streaming/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header X-Tesla-Proxy-Secret "REPLACE-WITH-YOUR-PROXY-SECRET";
+        proxy_read_timeout 1h;
+    }
 }
 ```
 
 ```
-TESLA_WSS_HOST: ws://your-proxy
+TESLA_WSS_HOST: ws://192.168.1.10:8081
 ```
 
+`proxy_pass` omits the port because Home Assistant listens on **80** by
+default — since 2026.8 on Home Assistant OS. Home Assistant Container still
+defaults to **8123**, so use `http://127.0.0.1:8123/...` there.
+
 TeslaMate names the vehicle it wants by Tesla's numeric id, not the VIN, unless
-`TESLA_WSS_USE_VIN` is set. The integration knows both for any vehicle added
-from this version on, but an entry created earlier only recorded the VIN — so
-add this line if yours predates the TeslaMate support. It is harmless either
-way:
+`TESLA_WSS_USE_VIN` is set. The integration records that id when the bridge is
+enabled, looking it up once if the entry predates it, so this line is only
+needed if that lookup could not find it. It is harmless either way:
 
 ```
 TESLA_WSS_USE_VIN: "true"
 ```
 
-Because the proxy adds the secret, that listener is unauthenticated on its own:
-restrict it to your LAN (`allow`/`deny`, or a firewall), and don't expose it to
-the internet. `ws://` is fine for a hop inside your network — the secret never
-travels over it — but the telemetry itself, including location, does, so use
+`ws://` is fine for a hop inside your network — the secret never travels over
+it — but the telemetry itself, including location, does, so use
 `wss://` if that hop leaves the LAN.
 
 What to expect:

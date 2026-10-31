@@ -69,6 +69,7 @@ from .const import (
 )
 from .signals import build_options_schema, parse_options_input
 from .tesla_api import TeslaApiError, TeslaAuthError, list_vehicles_with_token
+from .teslamate import CONF_TESLAMATE_BRIDGE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -300,15 +301,11 @@ class TeslaTelemetryOAuth2FlowHandler(
                     CONF_VIN: self._chosen_vin,
                     # The legacy numeric vehicle id, so the TeslaMate bridge
                     # can accept the id TeslaMate subscribes with by default
-                    # instead of requiring TESLA_WSS_USE_VIN. Not ``id_s``:
-                    # that is the Fleet API's own id (TeslaMate's ``eid``),
-                    # a different number from the ``vid`` it streams under.
-                    CONF_VEHICLE_ID: str(
-                        vehicle.get("vehicle_id")
-                        or vehicle.get("id")
-                        or vehicle.get("id_s")
-                        or ""
-                    ),
+                    # instead of requiring TESLA_WSS_USE_VIN. Only
+                    # ``vehicle_id``: ``id`` and ``id_s`` are the Fleet API's
+                    # own id (TeslaMate's ``eid``), a different number from
+                    # the ``vid`` it streams under.
+                    CONF_VEHICLE_ID: str(vehicle.get("vehicle_id") or ""),
                     CONF_VEHICLE_NAME: vehicle_name,
                     CONF_REGION: self._region,
                     CONF_HOSTNAME: user_input[CONF_HOSTNAME].strip(),
@@ -387,10 +384,18 @@ class TeslaTelemetryOptionsFlow(OptionsFlow):
                     ),
                 )
             )
+            teslamate = user_input.get("teslamate") or {}
+            options[CONF_TESLAMATE_BRIDGE] = bool(
+                teslamate.get(
+                    CONF_TESLAMATE_BRIDGE,
+                    self.config_entry.options.get(CONF_TESLAMATE_BRIDGE, False),
+                )
+            )
             return self.async_create_entry(title="", data=options)
         allowed = self.config_entry.options.get(
             CONF_ALLOW_VEHICLE_COMMANDS, DEFAULT_ALLOW_VEHICLE_COMMANDS
         )
+        teslamate = self.config_entry.options.get(CONF_TESLAMATE_BRIDGE, False)
         schema = build_options_schema(self.config_entry).extend(
             {
                 vol.Required("vehicle_commands"): data_entry_flow.section(
@@ -402,7 +407,17 @@ class TeslaTelemetryOptionsFlow(OptionsFlow):
                         }
                     ),
                     {"collapsed": not allowed},
-                )
+                ),
+                vol.Required("teslamate"): data_entry_flow.section(
+                    vol.Schema(
+                        {
+                            vol.Optional(
+                                CONF_TESLAMATE_BRIDGE, default=teslamate
+                            ): bool,
+                        }
+                    ),
+                    {"collapsed": not teslamate},
+                ),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

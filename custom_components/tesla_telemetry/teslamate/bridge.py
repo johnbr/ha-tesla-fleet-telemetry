@@ -100,6 +100,12 @@ class TeslaMateStreamHub:
                 task.cancel()
         _LOGGER.info("tesla_telemetry: teslamate disconnected vin=%s", client.vin)
 
+    def close_vin(self, vin: str) -> None:
+        """Drop every connection for a vehicle whose entry has gone away."""
+        for client in tuple(self._clients.get(vin, ())):
+            self.unregister(client)
+            self.hass.async_create_task(client.ws.close())
+
     @callback
     def publish(self, vin: str, name: str, sample: SignalSample) -> None:
         """Called for every datum the vehicle sends."""
@@ -164,12 +170,14 @@ class TeslaTelemetryStreamView(HomeAssistantView):
         hub: TeslaMateStreamHub,
         secrets_by_vin: dict[str, str],
         vins_by_vehicle_id: dict[str, str],
+        enabled_vins: set[str],
         coordinators_by_vin: dict[str, TeslaTelemetryCoordinator],
     ) -> None:
         self._hub = hub
         # Shared with __init__ and kept current as entries load and unload.
         self._secrets = secrets_by_vin
         self._vins_by_vehicle_id = vins_by_vehicle_id
+        self._enabled = enabled_vins
         self._coordinators = coordinators_by_vin
 
     async def get(self, request: web.Request) -> web.StreamResponse:
@@ -182,6 +190,10 @@ class TeslaTelemetryStreamView(HomeAssistantView):
             for vin, configured in self._secrets.items()
             if proxy_secret_matches(secret, configured)
         }
+        # The view outlives the option that registers it — HA cannot
+        # unregister one without a restart — so the switch is re-checked here
+        # on every connection. Turning it off stops serving immediately.
+        allowed &= self._enabled
         if not allowed:
             # The header name is spelled out rather than passed as the
             # constant: CodeQL reads a variable called HEADER_PROXY_SECRET in
