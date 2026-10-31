@@ -31,6 +31,7 @@ from .services import (
 )
 from .signals import resolve_effective_intervals
 from .tesla_api import TeslaApi
+from .teslamate import ensure_vehicle_id, setup_bridge, unload_bridge
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -119,6 +120,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.info(
             "tesla_telemetry: WebSocket view registered at /api/tesla_telemetry/ws"
         )
+
+    # Optional, self-contained: lets TeslaMate take its stream from us instead
+    # of paying for the same Fleet API data twice. See ``teslamate/``. The
+    # lookup is a no-op unless this entry predates the bridge.
+    await ensure_vehicle_id(hass, entry, api)
+    setup_bridge(hass, entry, vin, secrets_by_vin, coordinators_by_vin)
 
     domain_data[entry.entry_id] = {
         "coordinator": coordinator,
@@ -252,6 +259,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if record is not None:
             domain_data.get("coordinators_by_vin", {}).pop(record["vin"], None)
             domain_data.get("secrets_by_vin", {}).pop(record["vin"], None)
+            unload_bridge(hass, record["vin"])
         # The view + services stay registered: HA does not support
         # unregistering them without a restart. With no entries left, the
         # view's empty routing table rejects any subsequent connection with

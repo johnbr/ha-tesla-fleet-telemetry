@@ -55,6 +55,7 @@ from .const import (
     CONF_PRIVATE_KEY_PEM,
     CONF_PROXY_SECRET,
     CONF_REGION,
+    CONF_VEHICLE_ID,
     CONF_VEHICLE_NAME,
     CONF_VIN,
     DEFAULT_ALLOW_VEHICLE_COMMANDS,
@@ -297,6 +298,17 @@ class TeslaTelemetryOAuth2FlowHandler(
                 data = {
                     **self._oauth_data,
                     CONF_VIN: self._chosen_vin,
+                    # The legacy numeric vehicle id, so the TeslaMate bridge
+                    # can accept the id TeslaMate subscribes with by default
+                    # instead of requiring TESLA_WSS_USE_VIN. Not ``id_s``:
+                    # that is the Fleet API's own id (TeslaMate's ``eid``),
+                    # a different number from the ``vid`` it streams under.
+                    CONF_VEHICLE_ID: str(
+                        vehicle.get("vehicle_id")
+                        or vehicle.get("id")
+                        or vehicle.get("id_s")
+                        or ""
+                    ),
                     CONF_VEHICLE_NAME: vehicle_name,
                     CONF_REGION: self._region,
                     CONF_HOSTNAME: user_input[CONF_HOSTNAME].strip(),
