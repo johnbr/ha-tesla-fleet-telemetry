@@ -86,6 +86,7 @@ from .signals import (
 )
 from .values import (
     VALUE_KIND_NUMBER,
+    session_energy,
     value_as_bool,
     value_as_charge_state,
     value_as_enum_name,
@@ -507,24 +508,41 @@ DcChargingPowerSensor = _scalar_sensor(
     precision=1,
 )
 
-AcChargingEnergyInSensor = _scalar_sensor(
+def _session_energy_sensor(**kwargs: Any) -> type[_BaseTelemetrySensor]:
+    """A per-session energy-added sensor that never dips within a session.
+
+    ``TOTAL_INCREASING`` reads any drop as a meter reset, so the session's
+    peak is held until the car starts a new session (see ``session_energy``).
+    The held value is the restored one after a restart, too.
+    """
+    base = _scalar_sensor(
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        unit=UnitOfEnergy.KILO_WATT_HOUR,
+        precision=2,
+        **kwargs,
+    )
+
+    class _Sensor(base):  # type: ignore[valid-type,misc]
+        def _handle(self, sample: SignalSample) -> None:
+            self._attr_native_value = session_energy(
+                self._attr_native_value, value_as_float(sample.value)
+            )
+
+    _Sensor.__name__ = base.__name__
+    return _Sensor
+
+
+AcChargingEnergyInSensor = _session_energy_sensor(
     signal=SIGNAL_AC_CHARGING_ENERGY_IN,
     suffix="ac_charging_energy_in_telemetry",
     name="AC charge energy added",
-    device_class=SensorDeviceClass.ENERGY,
-    state_class=SensorStateClass.TOTAL_INCREASING,
-    unit=UnitOfEnergy.KILO_WATT_HOUR,
-    precision=2,
 )
 
-DcChargingEnergyInSensor = _scalar_sensor(
+DcChargingEnergyInSensor = _session_energy_sensor(
     signal=SIGNAL_DC_CHARGING_ENERGY_IN,
     suffix="dc_charging_energy_in_telemetry",
     name="DC charge energy added",
-    device_class=SensorDeviceClass.ENERGY,
-    state_class=SensorStateClass.TOTAL_INCREASING,
-    unit=UnitOfEnergy.KILO_WATT_HOUR,
-    precision=2,
 )
 
 class FastChargerPresentSensor(_BaseTelemetrySensor):
