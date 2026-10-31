@@ -554,8 +554,8 @@ async def _auto_resync_if_due(hass: HomeAssistant, entry: ConfigEntry) -> None:
     ``config.exp`` is what ends the stream, so it decides when to renew — not
     our own ``last_sync_at``, which a restored backup or a push from another
     instance leaves saying "recent" while the car's copy runs out. The stamp is
-    the fallback when there is no expiry to go by: Tesla sent none, or the read
-    of the car's config failed.
+    the fallback when there is no expiry to go by: Tesla sent none, the car
+    reports no config at all, or the read of the car's config failed.
 
     An entry with no ``last_sync_at`` never pushed a config itself — which is
     also what a re-added entry looks like, and the car then still holds the one
@@ -594,21 +594,36 @@ async def _auto_resync_if_due(hass: HomeAssistant, entry: ConfigEntry) -> None:
     else:
         config = (reported or {}).get("config") or {}
         hostname = config.get("hostname")
-        if not hostname or hostname != entry.data.get(CONF_HOSTNAME):
-            # No config, or one pointing elsewhere: not ours to renew. Asked
-            # again on the next check rather than remembered — this entry
-            # bootstrapping, or another instance pushing, both change the
-            # answer.
+        if hostname and hostname != entry.data.get(CONF_HOSTNAME):
+            # Another endpoint's config: not ours to renew, however stale our
+            # stamp. Asked again on the next check rather than remembered —
+            # this entry bootstrapping, or another instance pushing, both
+            # change the answer.
             _LOGGER.debug(
-                "tesla_telemetry: vin=%s holds no config for %s — nothing to "
-                "renew",
+                "tesla_telemetry: vin=%s holds a config for %s, not %s — "
+                "nothing to renew",
                 entry.data[CONF_VIN],
+                hostname,
                 entry.data.get(CONF_HOSTNAME),
             )
             return
-        exp = _exp_seconds(config.get("exp"))
-        if exp is not None:
-            remaining = int(exp - time.time())
+        if not hostname:
+            # No config at all. Without a stamp there is nothing to adopt.
+            # With one, this entry did push a config, and it may have lapsed
+            # and been dropped rather than reported with a past `exp` —
+            # Tesla's behaviour there isn't documented — so the stamp decides,
+            # as when the read fails.
+            _LOGGER.debug(
+                "tesla_telemetry: vin=%s reports no telemetry config%s",
+                entry.data[CONF_VIN],
+                " — falling back to the last-sync stamp" if last else "",
+            )
+            if not last:
+                return
+        else:
+            exp = _exp_seconds(config.get("exp"))
+            if exp is not None:
+                remaining = int(exp - time.time())
 
     if last:
         if remaining is not None:
