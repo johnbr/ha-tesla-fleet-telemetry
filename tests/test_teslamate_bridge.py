@@ -166,3 +166,27 @@ def test_an_unknown_tag_is_still_rejected():
     view = _view(_Coordinator({}))
 
     assert _subscribe(view, tag="not-a-vehicle") is None
+
+
+def test_a_vehicle_disabled_after_the_upgrade_is_refused_at_subscribe():
+    # The connection was accepted while the entry was enabled; it can unload
+    # between the upgrade and the subscribe message, so the switch is re-read.
+    view = _view(None)
+    view._enabled.clear()
+
+    assert _subscribe(view) is None
+
+
+def test_unregistering_twice_is_a_no_op():
+    # close_vin unregisters, and the view unregisters again from its finally
+    # block once the socket closes.
+    hub = bridge.TeslaMateStreamHub(SimpleNamespace())
+    client = bridge._Client(
+        ws=object(), vin=VIN, row=protocol.StreamRow(columns=("soc",), tag=VID)
+    )
+    hub._clients[VIN].add(client)
+
+    hub.unregister(client)
+    hub.unregister(client)
+
+    assert VIN not in hub._clients
