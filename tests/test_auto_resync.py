@@ -1,12 +1,16 @@
 """Tests for the auto-resync of ``fleet_telemetry_config``.
 
 The daily check is what keeps the car's config ahead of Tesla's ~30-day
-``exp``. Two of its decisions are load-bearing and used to be wrong:
+``exp``. Three of its decisions are load-bearing and used to be wrong:
 
 * an entry with no ``last_sync_at`` returned on the first line, so a re-added
   entry (the v1 → v2 migration asks for exactly that) never renewed the config
   the previous install had pushed — it expired and the stream stopped, with
   nothing in the log;
+* the check trusted its own stamp, which a restored backup or a push from
+  another instance leaves wrong; it renews from the ``exp`` Tesla reports for
+  the config the car actually holds, and falls back to the stamp only when the
+  response has no ``exp``;
 * ``async_track_time_interval`` restarts its countdown on every HA start, so
   the check is also run once at startup.
 
@@ -169,8 +173,6 @@ class Hass:
     """The slice of ``HomeAssistant`` the resync touches."""
 
     def __init__(self, entry: Entry):
-        self.record: dict[str, Any] = {}
-        self.data = {"tesla_telemetry": {entry.entry_id: self.record}}
         self.stamps: list[dict[str, Any]] = []
         self.config_entries = SimpleNamespace(async_update_entry=self._update)
         self._entry = entry
@@ -180,18 +182,40 @@ class Hass:
         self.stamps.append(entry.data)
 
 
-def run(services: Any, monkeypatch: pytest.MonkeyPatch, entry: Entry, api: FakeApi) -> Hass:
+def run(
+    services: Any, monkeypatch: pytest.MonkeyPatch, entry: Entry, api: FakeApi
+) -> Hass:
     """Run one check against ``entry`` with ``api`` standing in for Tesla."""
     hass = Hass(entry)
     monkeypatch.setattr(services, "_entry_api", lambda _hass, _entry: api)
-    monkeypatch.setattr(services, "_build_telemetry_config", lambda _entry, _ca: {"sent": True})
+    monkeypatch.setattr(
+        services, "_build_telemetry_config", lambda _entry, _ca: {"sent": True}
+    )
     asyncio.run(services._auto_resync_if_due(hass, entry))
     return hass
 
 
-def config_for(hostname: str | None = HOSTNAME) -> dict:
+def config_for(hostname: str | None = HOSTNAME, exp: int | None = None) -> dict:
     """A ``get_fleet_telemetry_config`` body as Tesla returns it."""
-    return {"synced": True, "key_paired": True, "config": {"hostname": hostname}}
+    config: dict[str, Any] = {"hostname": hostname}
+    if exp is not None:
+        config["exp"] = exp
+    return {"synced": True, "key_paired": True, "config": config}
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        pytest.param(1_790_000_000, 1_790_000_000, id="seconds"),
+        pytest.param(1_790_000_000_000, 1_790_000_000, id="milliseconds"),
+        pytest.param(None, None, id="missing"),
+        pytest.param("1790000000", None, id="string"),
+        pytest.param(True, None, id="bool"),
+    ],
+)
+def test_exp_seconds(services: Any, value: Any, expected: int | None) -> None:
+    """``exp`` is read as seconds, whether Tesla sends seconds or ms."""
+    assert services._exp_seconds(value) == expected
 
 
 class TestAdoptingAnInheritedConfig:
@@ -205,7 +229,7 @@ class TestAdoptingAnInheritedConfig:
 
         assert len(api.pushed) == 1, "the inherited config should be re-pushed"
         assert api.pushed[0][0] == VIN
-        assert entry.data["last_sync_at"] > 0, "adopting arms the weekly renewal"
+        assert entry.data["last_sync_at"] > 0, "the push stamps the entry"
         assert hass.stamps, "the stamp goes through the config entry"
 
     def test_another_endpoint_is_left_alone(
@@ -242,10 +266,10 @@ class TestAdoptingAnInheritedConfig:
         assert "cannot read the car's telemetry config" in caplog.text
         assert "Tesla said no" in caplog.text
 
-    def test_the_car_is_asked_once_per_run(
+    def test_a_car_holding_nothing_of_ours_is_asked_again_next_time(
         self, services: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A "not ours" answer cannot change on its own, so stop asking."""
+        """The answer decides the renewal, so it is not cached."""
         entry, api = Entry(), FakeApi(config_for("someone-else.example.com"))
         hass = Hass(entry)
         monkeypatch.setattr(services, "_entry_api", lambda _hass, _entry: api)
@@ -255,27 +279,110 @@ class TestAdoptingAnInheritedConfig:
         for _ in range(3):
             asyncio.run(services._auto_resync_if_due(hass, entry))
 
-        assert api.get_calls == 1
+        assert api.get_calls == 3
 
 
-class TestRenewingOurOwnConfig:
-    def test_a_recent_sync_does_no_work(
+class TestRenewingByExpiry:
+    """The car's ``exp`` decides, not our own ``last_sync_at``."""
+
+    def test_a_stale_stamp_does_not_renew_a_config_with_time_left(
+        self, services: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A restored backup or another instance can push after our stamp."""
+        entry = Entry(last_sync_at=int(time.time()) - 20 * DAY)
+        api = FakeApi(config_for(exp=int(time.time()) + 20 * DAY))
+        run(services, monkeypatch, entry, api)
+
+        assert api.pushed == []
+
+    @pytest.mark.parametrize("unit", [1, 1000], ids=["seconds", "milliseconds"])
+    def test_a_fresh_stamp_does_not_hide_an_expiring_config(
+        self, services: Any, monkeypatch: pytest.MonkeyPatch, unit: int
+    ) -> None:
+        entry = Entry(last_sync_at=int(time.time()) - DAY)
+        api = FakeApi(config_for(exp=unit * (int(time.time()) + 3 * DAY)))
+        hass = run(services, monkeypatch, entry, api)
+
+        assert len(api.pushed) == 1
+        assert entry.data["last_sync_at"] > int(time.time()) - DAY
+        assert hass.stamps
+
+    def test_an_expired_config_is_renewed_and_says_so(
+        self,
+        services: Any,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        entry = Entry(last_sync_at=int(time.time()) - DAY)
+        api = FakeApi(config_for(exp=int(time.time()) - 2 * DAY))
+        with caplog.at_level(logging.INFO, logger=services.__name__):
+            run(services, monkeypatch, entry, api)
+
+        assert len(api.pushed) == 1
+        assert "config expired" in caplog.text
+
+    def test_a_config_for_another_endpoint_is_not_renewed(
+        self, services: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Not ours to renew, however close it is to expiring."""
+        entry = Entry(last_sync_at=int(time.time()) - 20 * DAY)
+        api = FakeApi(
+            config_for("someone-else.example.com", exp=int(time.time()) - DAY)
+        )
+        run(services, monkeypatch, entry, api)
+
+        assert api.pushed == []
+
+
+class TestRenewingWithoutAnExpiry:
+    """Tesla reported no ``exp``: the stamp decides, as it used to."""
+
+    def test_a_fresh_stamp_is_not_renewed(
         self, services: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         entry = Entry(last_sync_at=int(time.time()) - DAY)
-        api = FakeApi()
+        api = FakeApi(config_for())
         run(services, monkeypatch, entry, api)
 
-        assert api.get_calls == 0, "nothing to check while the stamp is fresh"
+        assert api.get_calls == 1, "the car is still asked for its config"
         assert api.pushed == []
 
     def test_an_old_stamp_is_renewed(
         self, services: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         entry = Entry(last_sync_at=int(time.time()) - 8 * DAY)
-        api = FakeApi()
+        api = FakeApi(config_for())
         hass = run(services, monkeypatch, entry, api)
 
         assert len(api.pushed) == 1
         assert entry.data["last_sync_at"] > int(time.time()) - DAY
         assert hass.stamps
+
+
+class TestRenewingWhenTheReadFails:
+    """A failed read falls back to the stamp: the push may still work."""
+
+    def test_a_stale_stamp_is_still_renewed(
+        self,
+        services: Any,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        entry = Entry(last_sync_at=int(time.time()) - 8 * DAY)
+        api = FakeApi(error=RuntimeError("Tesla said no"))
+        with caplog.at_level(logging.WARNING, logger=services.__name__):
+            hass = run(services, monkeypatch, entry, api)
+
+        assert len(api.pushed) == 1
+        assert entry.data["last_sync_at"] > int(time.time()) - DAY
+        assert hass.stamps
+        assert "cannot read the car's telemetry config" in caplog.text
+
+    def test_a_fresh_stamp_is_left_alone(
+        self, services: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        entry = Entry(last_sync_at=int(time.time()) - DAY)
+        api = FakeApi(error=RuntimeError("Tesla said no"))
+        run(services, monkeypatch, entry, api)
+
+        assert api.pushed == []

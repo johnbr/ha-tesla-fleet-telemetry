@@ -9,8 +9,8 @@ auto-resolves when there's exactly one entry configured):
     ``set_fleet_telemetry_config`` so the vehicle starts streaming.
   * ``resync_telemetry_config``  — re-pushes the same config. Tesla's
     ``exp`` field is ~30 days. The integration also auto-checks daily
-    and re-pushes when the last sync is more than 7 days old, so manual
-    invocation is rarely needed.
+    and re-pushes once the config the car reports expires within 7 days,
+    so manual invocation is rarely needed.
   * ``dump_public_key``          — emits the EC P-256 public key derived
     from the configured private key, ready to host at the partner
     domain's ``.well-known`` path. Returns the PEM as a service response.
@@ -56,6 +56,7 @@ from .commands import DEFAULT_LOCALE, NAV_ORDERS, CommandRefused
 from .const import (
     AUTO_RESYNC_CHECK_INTERVAL_SECONDS,
     AUTO_RESYNC_MAX_AGE_SECONDS,
+    AUTO_RESYNC_RENEW_BEFORE_SECONDS,
     CONF_ALLOW_VEHICLE_COMMANDS,
     CONF_HOSTNAME,
     CONF_INTERVAL_PRESET,
@@ -537,18 +538,32 @@ def async_register_services(hass: HomeAssistant) -> None:
 # ---------------------------------------------------------------------
 # Auto-resync
 # ---------------------------------------------------------------------
+def _exp_seconds(value: Any) -> int | None:
+    """A config's ``exp`` as a unix timestamp in seconds, or ``None`` when
+    Tesla sent no usable value. Some responses carry milliseconds."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    # Anything this large is milliseconds; in seconds it would be year 5138.
+    return int(value / 1000) if value > 100_000_000_000 else int(value)
+
+
 async def _auto_resync_if_due(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Re-push fleet_telemetry_config when the last successful sync is
-    older than ``AUTO_RESYNC_MAX_AGE_SECONDS``.
+    """Re-push fleet_telemetry_config when the config the car holds is due to
+    expire.
+
+    ``config.exp`` is what ends the stream, so it decides when to renew — not
+    our own ``last_sync_at``, which a restored backup or a push from another
+    instance leaves saying "recent" while the car's copy runs out. The stamp is
+    the fallback when there is no expiry to go by: Tesla sent none, or the read
+    of the car's config failed.
 
     An entry with no ``last_sync_at`` never pushed a config itself — which is
-    also what a re-added entry looks like, and the car then still holds the
-    one the previous install pushed. That one expires ~30 days later and takes
-    the stream down with it, so adopt it instead of skipping forever.
+    also what a re-added entry looks like, and the car then still holds the one
+    the previous install pushed. That one is re-pushed rather than left to
+    expire, and pushing stamps the entry, which the options listener and the
+    fallback above rely on.
     """
     last = entry.data.get(CONF_LAST_SYNC_AT)
-    if last and time.time() - last < AUTO_RESYNC_MAX_AGE_SECONDS:
-        return
     try:
         api = _entry_api(hass, entry)
     except HomeAssistantError as err:
@@ -560,40 +575,66 @@ async def _auto_resync_if_due(hass: HomeAssistant, entry: ConfigEntry) -> None:
             err,
         )
         return
-    if not last:
-        record = hass.data.get(DOMAIN, {}).get(entry.entry_id)
-        if record is not None and record.get("adopt_checked"):
-            # Asked once this run already and the answer was "not ours".
+
+    remaining = None
+    try:
+        reported = await api.get_fleet_telemetry_config(entry.data[CONF_VIN])
+    except Exception as err:  # noqa: BLE001 — never surface from a timer tick
+        # The push may still work, so a stale stamp is enough to renew on;
+        # without one there is nothing to adopt either, since adoption needs
+        # the hostname this read would have told us.
+        _LOGGER.warning(
+            "tesla_telemetry: cannot read the car's telemetry config for "
+            "vin=%s — %s",
+            entry.data[CONF_VIN],
+            err,
+        )
+        if not last:
             return
-        try:
-            reported = await api.get_fleet_telemetry_config(entry.data[CONF_VIN])
-        except Exception as err:  # noqa: BLE001 — never surface from a timer tick
-            _LOGGER.warning(
-                "tesla_telemetry: cannot read the car's telemetry config for "
-                "vin=%s — %s",
-                entry.data[CONF_VIN],
-                err,
-            )
-            return
-        hostname = ((reported or {}).get("config") or {}).get("hostname")
+    else:
+        config = (reported or {}).get("config") or {}
+        hostname = config.get("hostname")
         if not hostname or hostname != entry.data.get(CONF_HOSTNAME):
-            # No config, or one pointing elsewhere: not ours to renew. Stop
-            # asking until the next start — nothing here changes on its own.
+            # No config, or one pointing elsewhere: not ours to renew. Asked
+            # again on the next check rather than remembered — this entry
+            # bootstrapping, or another instance pushing, both change the
+            # answer.
             _LOGGER.debug(
                 "tesla_telemetry: vin=%s holds no config for %s — nothing to "
                 "renew",
                 entry.data[CONF_VIN],
                 entry.data.get(CONF_HOSTNAME),
             )
-            if record is not None:
-                record["adopt_checked"] = True
             return
+        exp = _exp_seconds(config.get("exp"))
+        if exp is not None:
+            remaining = int(exp - time.time())
+
+    if last:
+        if remaining is not None:
+            if remaining > AUTO_RESYNC_RENEW_BEFORE_SECONDS:
+                _LOGGER.debug(
+                    "tesla_telemetry: vin=%s config expires in %ss — not due yet",
+                    entry.data[CONF_VIN],
+                    remaining,
+                )
+                return
+        elif time.time() - last < AUTO_RESYNC_MAX_AGE_SECONDS:
+            # No expiry to go by, so the stamp is all there is.
+            return
+    else:
         _LOGGER.warning(
             "tesla_telemetry: vin=%s holds a telemetry config this entry did "
-            "not push — re-pushing it so the daily renewal covers it",
+            "not push — re-pushing it so the renewal covers it",
             entry.data[CONF_VIN],
         )
-    age = int(time.time() - last) if last else None
+
+    if remaining is None:
+        why = f" after {int(time.time() - last)}s" if last else ""
+    elif remaining < 0:
+        why = f", config expired {-remaining}s ago"
+    else:
+        why = f", config expires in {remaining}s"
     cfg = _build_telemetry_config(entry, DEFAULT_CA_BUNDLE_PEM.strip() + "\n")
     try:
         result = await api.set_fleet_telemetry_config(entry.data[CONF_VIN], cfg)
@@ -601,7 +642,7 @@ async def _auto_resync_if_due(hass: HomeAssistant, entry: ConfigEntry) -> None:
         _LOGGER.warning(
             "tesla_telemetry: auto-resync failed for vin=%s%s: %s",
             entry.data[CONF_VIN],
-            f" after {age}s" if age else "",
+            why,
             err,
         )
         return
@@ -609,7 +650,7 @@ async def _auto_resync_if_due(hass: HomeAssistant, entry: ConfigEntry) -> None:
     _LOGGER.info(
         "tesla_telemetry: auto-resync ok for vin=%s%s: %s",
         entry.data[CONF_VIN],
-        f" after {age}s" if age else "",
+        why,
         result,
     )
 
@@ -625,10 +666,9 @@ def async_schedule_auto_resync(
     The interval restarts its countdown on every HA start, so on its own it
     only fires once the instance has been up for 24 h straight — an instance
     that restarts more often than that would never run the check at all. The
-    extra check turns a restart from "postpone" into "check now"; it costs a
-    dict lookup unless the config is actually due. It runs when HA has
-    finished starting (or at once, when the entry is set up later), so the
-    Tesla round-trip never lands in the middle of a cold boot.
+    extra check turns a restart from "postpone" into "check now". It runs when
+    HA has finished starting (or at once, when the entry is set up later), so
+    the Tesla round-trip never lands in the middle of a cold boot.
     """
 
     async def _tick(_now: Any = None) -> None:
