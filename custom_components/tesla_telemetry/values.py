@@ -32,6 +32,29 @@ def value_as_float(value: Any) -> float | None:
     return None
 
 
+# A charge session's energy-added figure only climbs, but the car derives
+# DCChargingEnergyIn from the pack's state of charge: once a charge completes
+# with the cable still in, it follows SOC's ±0.1 % wobble down and back up,
+# and every dip trips TOTAL_INCREASING's "not strictly increasing" warning.
+# The car sends 0.0 when the next session starts, so only a drop below this
+# counts as a new session; anything smaller holds the session's peak.
+SESSION_ENERGY_RESET_BELOW_KWH = 0.5
+
+
+def session_energy(held: Any, value: float | None) -> float | None:
+    """The energy-added state to show for a new ``value``, given the ``held``
+    one: ``value`` unless it is a dip within the same session."""
+    if value is None or value < SESSION_ENERGY_RESET_BELOW_KWH:
+        return value
+    try:
+        peak = float(held)
+    except (TypeError, ValueError):
+        return value
+    if math.isnan(peak):
+        return value
+    return max(value, peak)
+
+
 def value_as_bool(value: Any) -> bool | None:
     """Return a bool from ``boolean_value`` or numeric truthy/falsy fallbacks."""
     if value.HasField("invalid"):

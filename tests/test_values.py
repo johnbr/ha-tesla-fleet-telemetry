@@ -154,3 +154,24 @@ def test_same_signal_on_different_arms() -> None:
     )
     assert as_bool[0] == values.VALUE_KIND_BOOL
     assert as_enum[:2] == (values.VALUE_KIND_ENUM, "supercharger")
+
+
+# ---------------------------------------------------------------------------
+# session_energy — the energy-added sensors hold a session's peak
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("held", "value", "expected"),
+    [
+        pytest.param(21.66, 21.77, 21.77, id="a climb is shown"),
+        # Measured 2026-10-31, plugged in after `complete`: DCChargingEnergyIn
+        # followed SOC's 92.01 ↔ 92.13 % wobble.
+        pytest.param(21.66, 21.55, 21.66, id="a dip holds the peak"),
+        pytest.param(40.79, 0.0, 0.0, id="the car's 0.0 starts a new session"),
+        pytest.param(23.4, 0.0063, 0.0063, id="a near-zero first sample too"),
+        pytest.param(None, 12.3, 12.3, id="nothing held yet"),
+        pytest.param("unknown", 12.3, 12.3, id="a restored non-number"),
+        pytest.param(21.66, None, None, id="an invalid sample"),
+    ],
+)
+def test_session_energy(held: object, value: float | None, expected: object) -> None:
+    assert values.session_energy(held, value) == expected
