@@ -326,10 +326,12 @@ data:
 ```
 
 The telemetry configuration expires on Tesla's side after roughly 30 days. The
-integration checks daily and re-pushes automatically when the last sync is
-more than 7 days old, so no manual upkeep is required. The check also runs once
-Home Assistant has started, because the daily interval restarts its countdown
-on every restart.
+integration checks daily and re-pushes automatically once the config the car
+reports expires within 7 days, so no manual upkeep is required. The expiry comes
+from Tesla's own copy, so a last-sync stamp that no longer reflects reality (a
+restored backup, a push from another instance) does not delay the renewal. The
+check also runs once Home Assistant has started, because the daily interval
+restarts its countdown on every restart.
 
 An entry that has never pushed a config itself — one re-added after the v1 → v2
 migration, say — adopts the config the car already holds: if Tesla reports one
