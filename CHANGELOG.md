@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.2](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.11.1...v0.11.2) (2026-10-31)
+
+
+### Bug Fixes
+
+* renew an inherited telemetry config instead of skipping forever ([#36](https://github.com/johnbr/ha-tesla-fleet-telemetry/issues/36)) ([4efa97d](https://github.com/johnbr/ha-tesla-fleet-telemetry/commit/4efa97dcf01fc6c4a9d0eb9c3958e81fedc04210))
+
 ## [0.11.1](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.11.0...v0.11.1) (2026-10-30)
 
 
