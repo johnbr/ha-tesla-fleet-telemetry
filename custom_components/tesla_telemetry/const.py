@@ -14,6 +14,7 @@ DOMAIN = "tesla_telemetry"
 SIGNAL_LOCATION = "Location"
 SIGNAL_GPS_STATE = "GpsState"
 SIGNAL_VEHICLE_SPEED = "VehicleSpeed"
+SIGNAL_ODOMETER = "Odometer"
 SIGNAL_GEAR = "Gear"
 SIGNAL_GPS_HEADING = "GpsHeading"
 SIGNAL_DESTINATION_NAME = "DestinationName"
@@ -285,6 +286,10 @@ STORAGE_KEY_OAUTH = "tesla_telemetry_oauth"
 
 # Config entry data keys
 CONF_VIN = "vin"
+# Tesla's numeric vehicle id (``id_s`` in the Fleet API listing). TeslaMate
+# addresses a vehicle by this by default, so the TeslaMate bridge accepts it
+# as well as the VIN — see ``teslamate/``.
+CONF_VEHICLE_ID = "vehicle_id"
 CONF_VEHICLE_NAME = "vehicle_name"
 CONF_PARTNER_DOMAIN = "partner_domain"
 CONF_PROXY_SECRET = "proxy_secret"

@@ -164,7 +164,7 @@ server {
     # The vehicle connects to the root path (Tesla's telemetry config carries
     # only a hostname and port), so proxy "/" to the integration's endpoint.
     location / {
-        proxy_pass http://127.0.0.1:8123/api/tesla_telemetry/ws;
+        proxy_pass http://127.0.0.1/api/tesla_telemetry/ws;
         proxy_http_version 1.1;
 
         # WebSocket upgrade.
@@ -281,6 +281,103 @@ Add the integration again for each additional VIN. The endpoint settings
 step is pre-filled from your first vehicle — just confirm it. Each VIN becomes
 its own Home Assistant device with its own entities. Service calls take an
 `entry_id` to select the vehicle when more than one is configured.
+
+## Feeding TeslaMate
+
+If you also run [TeslaMate](https://github.com/teslamate-org/teslamate), it can
+take its live data from this integration instead of opening its own path to
+Tesla. TeslaMate reads from `TESLA_WSS_HOST`, and this integration serves that
+protocol at `/api/tesla_telemetry/streaming/`, so the car streams once and both
+systems read it.
+
+**Enable it first.** It is off by default: open **Settings → Devices &
+Services → Tesla Fleet Telemetry → Configure → TeslaMate bridge** and turn it
+on. Nothing is served, and no extra API call is made, while it is off. The
+change takes effect when the entry reloads.
+
+The reverse proxy is required, not optional: TeslaMate's only setting is the
+host, and it cannot send a header of its own. The proxy is what adds the same
+`X-Tesla-Proxy-Secret` the vehicle endpoint uses, so the TeslaMate hop carries
+no credential and needs no second secret.
+
+TeslaMate appends `/streaming/` to whatever host you give it, so the location
+is exactly that path. Use a **complete `server` block on a LAN address**, not a
+bare `location` in your public one — with the secret injected, anyone who can
+reach it gets a live feed of the car's location:
+
+```nginx
+server {
+    # A LAN address: this listener is not reachable from the internet even if
+    # the host has a public interface.
+    listen 192.168.1.10:8081;
+    server_name teslamate-bridge.lan;
+
+    # Belt and braces, in case the listen address above is ever widened.
+    allow 192.168.0.0/16;
+    allow 10.0.0.0/8;
+    allow 172.16.0.0/12;
+    deny all;
+
+    location /streaming/ {
+        proxy_pass http://127.0.0.1/api/tesla_telemetry/streaming/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header X-Tesla-Proxy-Secret "REPLACE-WITH-YOUR-PROXY-SECRET";
+        proxy_read_timeout 1h;
+    }
+}
+```
+
+```
+TESLA_WSS_HOST: ws://192.168.1.10:8081
+```
+
+`proxy_pass` omits the port because Home Assistant listens on **80** by
+default — since 2026.8 on Home Assistant OS. Home Assistant Container still
+defaults to **8123**, so use `http://127.0.0.1:8123/...` there.
+
+TeslaMate names the vehicle it wants by Tesla's numeric id, not the VIN, unless
+`TESLA_WSS_USE_VIN` is set. The integration records that id when the bridge is
+enabled, looking it up once if the entry predates it, so this line is only
+needed if that lookup could not find it. It is harmless either way:
+
+```
+TESLA_WSS_USE_VIN: "true"
+```
+
+`ws://` is fine for a hop inside your network — the secret never travels over
+it — but the telemetry itself, including location, does, so use
+`wss://` if that hop leaves the LAN.
+
+What to expect:
+
+* **TeslaMate still polls.** `TESLA_WSS_HOST` only replaces the streaming
+  source; TeslaMate keeps fetching `vehicle_data` for what the stream doesn't
+  carry (lock, sentry, charge state, software update). With streaming on it
+  polls every 15 s while driving instead of every 2.5 s, so this cuts its Fleet
+  API usage substantially — it doesn't eliminate it.
+* **Columns need signals.** TeslaMate asks for speed, odometer, state of
+  charge, location, heading, power, gear and range. If one isn't in your
+  vehicle's signal selection, that column stays empty. Most are streamed by
+  default; `Odometer` is not, and adding it has a side effect — see below.
+* **Elevation, and why it argues against streaming `Odometer`.** Fleet
+  telemetry carries no elevation, so streamed positions have none. TeslaMate
+  fills missing elevation from SRTM — but it first decides whether a drive
+  came from a stream, and it recognises one by a position carrying an
+  odometer without an ideal battery range, which is exactly what a streamed
+  position looks like. So:
+
+  - leave `Odometer` out and the drives look polled: TeslaMate backfills
+    every position from SRTM, and elevation, ascent and descent all work;
+  - add `Odometer` from the catalog under **Configure** and the drives are
+    recognised as streamed: the backfill is skipped, and elevation stays
+    empty for good.
+
+  TeslaMate's own polling still records odometer on the positions it fetches,
+  so the first option loses very little.
+* **An HA restart drops TeslaMate's stream.** It backs off and reconnects, and
+  keeps polling in the meantime.
 
 ## Services
 

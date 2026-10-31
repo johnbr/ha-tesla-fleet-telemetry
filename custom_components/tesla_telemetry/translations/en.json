@@ -121,6 +121,13 @@
             "data": {
               "allow_vehicle_commands": "Allow vehicle commands"
             }
+          },
+          "teslamate": {
+            "name": "TeslaMate bridge",
+            "description": "Off by default. Serves this vehicle's live stream to TeslaMate in the streaming protocol its TESLA_WSS_HOST expects, so the car streams once and both systems read it. Enabling it adds a WebSocket endpoint on Home Assistant's own HTTP server that does not use Home Assistant's login; it is gated by the proxy secret the vehicle endpoint already uses, so keep that endpoint on your LAN. Takes effect when the entry reloads.",
+            "data": {
+              "teslamate_bridge": "Serve the telemetry stream to TeslaMate"
+            }
           }
         }
       }
