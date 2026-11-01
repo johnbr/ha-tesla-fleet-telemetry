@@ -21,7 +21,6 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
     EntityCategory,
@@ -78,6 +77,7 @@ from .coordinator import (
     signal_dispatcher_topic,
     signals_changed_topic,
 )
+from .models import TeslaTelemetryConfigEntry
 from .signals import (
     generic_entity_signals,
     generic_unique_id,
@@ -100,12 +100,10 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: TeslaTelemetryConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    coordinator: TeslaTelemetryCoordinator = hass.data[DOMAIN][entry.entry_id][
-        "coordinator"
-    ]
+    coordinator: TeslaTelemetryCoordinator = entry.runtime_data.coordinator
     async_add_entities(
         [
             # Driving / nav
@@ -154,7 +152,7 @@ async def async_setup_entry(
 @callback
 def _async_setup_generic_sensors(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: TeslaTelemetryConfigEntry,
     coordinator: TeslaTelemetryCoordinator,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
@@ -267,7 +265,7 @@ def _scalar_sensor(
     *,
     signal: str,
     suffix: str,
-    name: str,
+    key: str,
     device_class: SensorDeviceClass | None = None,
     state_class: SensorStateClass | None = SensorStateClass.MEASUREMENT,
     unit: str | None = None,
@@ -282,7 +280,7 @@ def _scalar_sensor(
 
     class _Sensor(_BaseTelemetrySensor):
         _signal_name = signal
-        _attr_name = name
+        _attr_translation_key = key
         _attr_device_class = device_class
         _attr_state_class = state_class
         _attr_native_unit_of_measurement = unit
@@ -304,7 +302,7 @@ def _scalar_sensor(
 # ---------------------------------------------------------------------------
 class SpeedSensor(_BaseTelemetrySensor):
     _signal_name = SIGNAL_VEHICLE_SPEED
-    _attr_name = "Speed"
+    _attr_translation_key = "vehicle_speed"
     _attr_device_class = SensorDeviceClass.SPEED
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfSpeed.MILES_PER_HOUR
@@ -328,7 +326,7 @@ class HeadingSensor(_BaseTelemetrySensor):
     """
 
     _signal_name = SIGNAL_GPS_HEADING
-    _attr_name = "Heading"
+    _attr_translation_key = "gps_heading"
     _attr_icon = "mdi:compass-outline"
     _attr_native_unit_of_measurement = "°"
     _attr_suggested_display_precision = 0
@@ -343,7 +341,7 @@ class HeadingSensor(_BaseTelemetrySensor):
 
 class DistanceToArrivalSensor(_BaseTelemetrySensor):
     _signal_name = SIGNAL_MILES_TO_ARRIVAL
-    _attr_name = "Distance to arrival"
+    _attr_translation_key = "miles_to_arrival"
     _attr_device_class = SensorDeviceClass.DISTANCE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfLength.MILES
@@ -362,7 +360,7 @@ class TimeToArrivalSensor(_BaseTelemetrySensor):
     jittery delivery doesn't make the rendered "5 min from now" jump around."""
 
     _signal_name = SIGNAL_MINUTES_TO_ARRIVAL
-    _attr_name = "Time to arrival"
+    _attr_translation_key = "time_to_arrival"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:
@@ -384,7 +382,7 @@ class GearSensor(_BaseTelemetrySensor):
     """Friendly shift-state string (P/R/N/D) extracted from ShiftState enum."""
 
     _signal_name = SIGNAL_GEAR
-    _attr_name = "Gear"
+    _attr_translation_key = "gear"
     _attr_state_class = None
 
     _GEAR_MAP: ClassVar[dict[str, str | None]] = {
@@ -408,7 +406,7 @@ class GearSensor(_BaseTelemetrySensor):
 SelfDrivingMilesSensor = _scalar_sensor(
     signal=SIGNAL_SELF_DRIVING_MILES,
     suffix="self_driving_miles_telemetry",
-    name="Self-driving distance",
+    key="self_driving_miles",
     device_class=SensorDeviceClass.DISTANCE,
     # "Since reset": TOTAL_INCREASING treats a drop as a new cycle.
     state_class=SensorStateClass.TOTAL_INCREASING,
@@ -423,7 +421,7 @@ SelfDrivingMilesSensor = _scalar_sensor(
 BatteryLevelSensor = _scalar_sensor(
     signal=SIGNAL_BATTERY_LEVEL,
     suffix="battery_level_telemetry",
-    name="Battery level",
+    key="battery_level",
     device_class=SensorDeviceClass.BATTERY,
     unit=PERCENTAGE,
     precision=0,
@@ -432,7 +430,7 @@ BatteryLevelSensor = _scalar_sensor(
 SocSensor = _scalar_sensor(
     signal=SIGNAL_SOC,
     suffix="soc_telemetry",
-    name="State of charge",
+    key="soc",
     device_class=SensorDeviceClass.BATTERY,
     unit=PERCENTAGE,
     precision=1,
@@ -441,7 +439,7 @@ SocSensor = _scalar_sensor(
 EstBatteryRangeSensor = _scalar_sensor(
     signal=SIGNAL_EST_BATTERY_RANGE,
     suffix="battery_range_telemetry",
-    name="Battery range",
+    key="battery_range",
     device_class=SensorDeviceClass.DISTANCE,
     unit=UnitOfLength.MILES,
     precision=0,
@@ -450,7 +448,7 @@ EstBatteryRangeSensor = _scalar_sensor(
 RatedRangeSensor = _scalar_sensor(
     signal=SIGNAL_RATED_RANGE,
     suffix="rated_range_telemetry",
-    name="Rated range",
+    key="rated_range",
     device_class=SensorDeviceClass.DISTANCE,
     unit=UnitOfLength.MILES,
     precision=0,
@@ -468,7 +466,7 @@ class ChargingStateSensor(_BaseTelemetrySensor):
     """
 
     _signal_name = SIGNAL_DETAILED_CHARGE_STATE
-    _attr_name = "Charging state"
+    _attr_translation_key = "charging_state"
     _attr_device_class = SensorDeviceClass.ENUM
     # HA declares _attr_options as a per-instance attribute, so it can't
     # be a ClassVar; this list is never mutated.
@@ -493,7 +491,7 @@ class ChargingStateSensor(_BaseTelemetrySensor):
 AcChargingPowerSensor = _scalar_sensor(
     signal=SIGNAL_AC_CHARGING_POWER,
     suffix="ac_charging_power_telemetry",
-    name="AC charging power",
+    key="ac_charging_power",
     device_class=SensorDeviceClass.POWER,
     unit=UnitOfPower.KILO_WATT,
     precision=2,
@@ -502,7 +500,7 @@ AcChargingPowerSensor = _scalar_sensor(
 DcChargingPowerSensor = _scalar_sensor(
     signal=SIGNAL_DC_CHARGING_POWER,
     suffix="dc_charging_power_telemetry",
-    name="DC charging power",
+    key="dc_charging_power",
     device_class=SensorDeviceClass.POWER,
     unit=UnitOfPower.KILO_WATT,
     precision=1,
@@ -536,13 +534,13 @@ def _session_energy_sensor(**kwargs: Any) -> type[_BaseTelemetrySensor]:
 AcChargingEnergyInSensor = _session_energy_sensor(
     signal=SIGNAL_AC_CHARGING_ENERGY_IN,
     suffix="ac_charging_energy_in_telemetry",
-    name="AC charge energy added",
+    key="ac_charging_energy_in",
 )
 
 DcChargingEnergyInSensor = _session_energy_sensor(
     signal=SIGNAL_DC_CHARGING_ENERGY_IN,
     suffix="dc_charging_energy_in_telemetry",
-    name="DC charge energy added",
+    key="dc_charging_energy_in",
 )
 
 class FastChargerPresentSensor(_BaseTelemetrySensor):
@@ -553,7 +551,7 @@ class FastChargerPresentSensor(_BaseTelemetrySensor):
     """
 
     _signal_name = SIGNAL_FAST_CHARGER_PRESENT
-    _attr_name = "Fast charger type"
+    _attr_translation_key = "fast_charger_type"
     _attr_state_class = None
 
     _MAP: ClassVar[dict[str, str | None]] = {
@@ -585,7 +583,7 @@ class FastChargerPresentSensor(_BaseTelemetrySensor):
 
 class ChargingCableTypeSensor(_BaseTelemetrySensor):
     _signal_name = SIGNAL_CHARGING_CABLE_TYPE
-    _attr_name = "Charging cable"
+    _attr_translation_key = "charging_cable"
     _attr_state_class = None
 
     _MAP: ClassVar[dict[str, str | None]] = {
@@ -609,7 +607,7 @@ class ChargingCableTypeSensor(_BaseTelemetrySensor):
 ChargeLimitSocSensor = _scalar_sensor(
     signal=SIGNAL_CHARGE_LIMIT_SOC,
     suffix="charge_limit_soc_telemetry",
-    name="Charge limit",
+    key="charge_limit",
     state_class=None,
     unit=PERCENTAGE,
     precision=0,
@@ -620,7 +618,7 @@ class TimeToFullChargeSensor(_BaseTelemetrySensor):
     """Hours-until-full as a duration in minutes (Tesla emits hours as a float)."""
 
     _signal_name = SIGNAL_TIME_TO_FULL_CHARGE
-    _attr_name = "Time to full charge"
+    _attr_translation_key = "time_to_full_charge"
     _attr_device_class = SensorDeviceClass.DURATION
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfTime.MINUTES
@@ -644,7 +642,7 @@ class TimeToFullChargeSensor(_BaseTelemetrySensor):
 InsideTempSensor = _scalar_sensor(
     signal=SIGNAL_INSIDE_TEMP,
     suffix="inside_temperature_telemetry",
-    name="Inside temperature",
+    key="inside_temperature",
     device_class=SensorDeviceClass.TEMPERATURE,
     unit=UnitOfTemperature.CELSIUS,
     precision=1,
@@ -653,7 +651,7 @@ InsideTempSensor = _scalar_sensor(
 OutsideTempSensor = _scalar_sensor(
     signal=SIGNAL_OUTSIDE_TEMP,
     suffix="outside_temperature_telemetry",
-    name="Outside temperature",
+    key="outside_temperature",
     device_class=SensorDeviceClass.TEMPERATURE,
     unit=UnitOfTemperature.CELSIUS,
     precision=1,
@@ -664,7 +662,7 @@ OutsideTempSensor = _scalar_sensor(
 # ---------------------------------------------------------------------------
 class SoftwareVersionSensor(_BaseTelemetrySensor):
     _signal_name = SIGNAL_SOFTWARE_UPDATE_VERSION
-    _attr_name = "Software version"
+    _attr_translation_key = "software_version"
     _attr_state_class = None
 
     def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:
@@ -678,7 +676,7 @@ class SoftwareVersionSensor(_BaseTelemetrySensor):
 SoftwareUpdateDownloadSensor = _scalar_sensor(
     signal=SIGNAL_SOFTWARE_UPDATE_DOWNLOAD_PCT,
     suffix="software_update_download_telemetry",
-    name="Software update download",
+    key="software_update_download",
     state_class=None,
     unit=PERCENTAGE,
     precision=0,
@@ -687,7 +685,7 @@ SoftwareUpdateDownloadSensor = _scalar_sensor(
 SoftwareUpdateInstallSensor = _scalar_sensor(
     signal=SIGNAL_SOFTWARE_UPDATE_INSTALL_PCT,
     suffix="software_update_install_telemetry",
-    name="Software update install",
+    key="software_update_install",
     state_class=None,
     unit=PERCENTAGE,
     precision=0,
@@ -700,7 +698,7 @@ SoftwareUpdateInstallSensor = _scalar_sensor(
 MotorStatorTempFrontSensor = _scalar_sensor(
     signal=SIGNAL_MOTOR_STATOR_TEMP_FRONT,
     suffix="motor_stator_temp_front_telemetry",
-    name="Front motor stator temperature",
+    key="motor_stator_temp_front",
     device_class=SensorDeviceClass.TEMPERATURE,
     unit=UnitOfTemperature.CELSIUS,
     precision=0,
@@ -709,7 +707,7 @@ MotorStatorTempFrontSensor = _scalar_sensor(
 MotorStatorTempRearSensor = _scalar_sensor(
     signal=SIGNAL_MOTOR_STATOR_TEMP_REAR,
     suffix="motor_stator_temp_rear_telemetry",
-    name="Rear motor stator temperature",
+    key="motor_stator_temp_rear",
     device_class=SensorDeviceClass.TEMPERATURE,
     unit=UnitOfTemperature.CELSIUS,
     precision=0,
@@ -718,7 +716,7 @@ MotorStatorTempRearSensor = _scalar_sensor(
 ModuleTempMaxSensor = _scalar_sensor(
     signal=SIGNAL_MODULE_TEMP_MAX,
     suffix="battery_module_temp_max_telemetry",
-    name="Battery temperature (max)",
+    key="battery_module_temp_max",
     device_class=SensorDeviceClass.TEMPERATURE,
     unit=UnitOfTemperature.CELSIUS,
     precision=1,
@@ -727,7 +725,7 @@ ModuleTempMaxSensor = _scalar_sensor(
 ModuleTempMinSensor = _scalar_sensor(
     signal=SIGNAL_MODULE_TEMP_MIN,
     suffix="battery_module_temp_min_telemetry",
-    name="Battery temperature (min)",
+    key="battery_module_temp_min",
     device_class=SensorDeviceClass.TEMPERATURE,
     unit=UnitOfTemperature.CELSIUS,
     precision=1,
@@ -744,7 +742,7 @@ class AvgBatteryTempSensor(_BaseTelemetrySensor):
     either updates, rendering ``unavailable`` until both have arrived.
     """
 
-    _attr_name = "Battery temperature (avg)"
+    _attr_translation_key = "battery_temp_avg"
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
@@ -889,7 +887,7 @@ class SignalsReceivedSensor(_SignalStatSensor):
     the state itself is the restored lifetime total plus that.
     """
 
-    _attr_name = "Signals received"
+    _attr_translation_key = "signals_received"
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_icon = "mdi:counter"
 
@@ -925,14 +923,14 @@ class EstimatedSignalCostSensor(_SignalStatSensor):
     the next flush). Rendered in the HA-configured currency.
     """
 
-    _attr_name = "Estimated signal cost"
+    _attr_translation_key = "estimated_signal_cost"
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_state_class = SensorStateClass.TOTAL
     _attr_suggested_display_precision = 2
     _attr_icon = "mdi:cash"
 
     def __init__(
-        self, coordinator: TeslaTelemetryCoordinator, entry: ConfigEntry
+        self, coordinator: TeslaTelemetryCoordinator, entry: TeslaTelemetryConfigEntry
     ) -> None:
         super().__init__(coordinator)
         self._entry = entry

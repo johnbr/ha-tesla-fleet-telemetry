@@ -32,7 +32,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import aiohttp
-import voluptuous as vol
+import probatio
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_LATITUDE, ATTR_LONGITUDE
@@ -72,6 +72,11 @@ from .const import (
     VEHICLE_COMMANDS_SCOPE,
     scopes_from_access_token,
 )
+from .models import (
+    TeslaTelemetryConfigEntry,
+    TeslaTelemetryRuntimeData,
+    runtime_data_if_loaded,
+)
 from .signals import resolve_effective_intervals
 from .tesla_api import TelemetryConfig, TelemetryFieldConfig, TeslaApi, TeslaApiError
 from .tls_ca import DEFAULT_CA_BUNDLE_PEM
@@ -93,48 +98,48 @@ ATTR_DESTINATION = "destination"
 ATTR_ORDER = "order"
 ATTR_LOCALE = "locale"
 
-_BOOTSTRAP_SCHEMA = vol.Schema(
+_BOOTSTRAP_SCHEMA = probatio.Schema(
     {
-        vol.Optional(ATTR_ENTRY_ID): str,
-        vol.Optional(ATTR_CA_PEM): str,
-        vol.Optional(ATTR_REGISTER_PARTNER, default=True): bool,
+        probatio.Optional(ATTR_ENTRY_ID): str,
+        probatio.Optional(ATTR_CA_PEM): str,
+        probatio.Optional(ATTR_REGISTER_PARTNER, default=True): bool,
     }
 )
 
-_RESYNC_SCHEMA = vol.Schema(
+_RESYNC_SCHEMA = probatio.Schema(
     {
-        vol.Optional(ATTR_ENTRY_ID): str,
-        vol.Optional(ATTR_CA_PEM): str,
+        probatio.Optional(ATTR_ENTRY_ID): str,
+        probatio.Optional(ATTR_CA_PEM): str,
     }
 )
 
-_DUMP_KEY_SCHEMA = vol.Schema({vol.Optional(ATTR_ENTRY_ID): str})
+_DUMP_KEY_SCHEMA = probatio.Schema({probatio.Optional(ATTR_ENTRY_ID): str})
 
-_GET_CONFIG_SCHEMA = vol.Schema({vol.Optional(ATTR_ENTRY_ID): str})
+_GET_CONFIG_SCHEMA = probatio.Schema({probatio.Optional(ATTR_ENTRY_ID): str})
 
-_SET_PRESET_SCHEMA = vol.Schema(
+_SET_PRESET_SCHEMA = probatio.Schema(
     {
-        vol.Optional(ATTR_ENTRY_ID): str,
-        vol.Required(ATTR_PRESET): vol.In(list(INTERVAL_PRESET_OVERRIDES)),
-        vol.Optional(ATTR_CA_PEM): str,
+        probatio.Optional(ATTR_ENTRY_ID): str,
+        probatio.Required(ATTR_PRESET): probatio.In(list(INTERVAL_PRESET_OVERRIDES)),
+        probatio.Optional(ATTR_CA_PEM): str,
     }
 )
 
 # Exactly one of `destination` (free text) or latitude+longitude.
-_NAVIGATE_SCHEMA = vol.All(
-    vol.Schema(
+_NAVIGATE_SCHEMA = probatio.All(
+    probatio.Schema(
         {
-            vol.Optional(ATTR_ENTRY_ID): str,
-            vol.Optional(ATTR_DESTINATION): cv.string,
-            vol.Inclusive(ATTR_LATITUDE, "coordinates"): cv.latitude,
-            vol.Inclusive(ATTR_LONGITUDE, "coordinates"): cv.longitude,
-            vol.Optional(ATTR_ORDER, default=0): vol.All(
-                vol.Coerce(int), vol.In(NAV_ORDERS)
+            probatio.Optional(ATTR_ENTRY_ID): str,
+            probatio.Optional(ATTR_DESTINATION): cv.string,
+            probatio.Inclusive(ATTR_LATITUDE, "coordinates"): cv.latitude,
+            probatio.Inclusive(ATTR_LONGITUDE, "coordinates"): cv.longitude,
+            probatio.Optional(ATTR_ORDER, default=0): probatio.All(
+                probatio.Coerce(int), probatio.In(NAV_ORDERS)
             ),
             # Text destinations only: the locale the car reads the text in.
             # A BCP 47 tag such as en-US or de-DE.
-            vol.Optional(ATTR_LOCALE, default=DEFAULT_LOCALE): vol.All(
-                cv.string, vol.Match(r"^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$")
+            probatio.Optional(ATTR_LOCALE, default=DEFAULT_LOCALE): probatio.All(
+                cv.string, probatio.Match(r"^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$")
             ),
         }
     ),
@@ -143,32 +148,45 @@ _NAVIGATE_SCHEMA = vol.All(
 )
 
 
-def _resolve_entry(hass: HomeAssistant, entry_id: str | None) -> ConfigEntry:
+def _resolve_entry(
+    hass: HomeAssistant, entry_id: str | None
+) -> TeslaTelemetryConfigEntry:
     """Return the entry the service call is targeting."""
     if entry_id:
         entry = hass.config_entries.async_get_entry(entry_id)
         if entry is None or entry.domain != DOMAIN:
             raise ServiceValidationError(
-                f"unknown tesla_telemetry config entry: {entry_id}"
+                translation_domain=DOMAIN,
+                translation_key="entry_not_found",
+                translation_placeholders={"entry_id": entry_id},
             )
         return entry
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
-        raise ServiceValidationError("no tesla_telemetry config entries")
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="no_entries"
+        )
     if len(entries) > 1:
         raise ServiceValidationError(
-            "multiple tesla_telemetry entries — pass `entry_id`"
+            translation_domain=DOMAIN, translation_key="multiple_entries"
         )
     return entries[0]
 
 
-def _entry_api(hass: HomeAssistant, entry: ConfigEntry) -> TeslaApi:
-    record = hass.data.get(DOMAIN, {}).get(entry.entry_id)
-    if not record or record.get("api") is None:
+def _entry_runtime(entry: TeslaTelemetryConfigEntry) -> TeslaTelemetryRuntimeData:
+    """The entry's runtime data, or a translated error when it is not loaded."""
+    runtime = runtime_data_if_loaded(entry)
+    if runtime is None:
         raise HomeAssistantError(
-            f"entry {entry.entry_id} has no API client — was setup_entry called?"
+            translation_domain=DOMAIN,
+            translation_key="entry_not_loaded",
+            translation_placeholders={"entry_id": entry.entry_id},
         )
-    return record["api"]
+    return runtime
+
+
+def _entry_api(entry: TeslaTelemetryConfigEntry) -> TeslaApi:
+    return _entry_runtime(entry).api
 
 
 _Handler = Callable[[ServiceCall], Awaitable[ServiceResponse]]
@@ -204,9 +222,17 @@ async def _tesla_call[T](awaitable: Awaitable[T]) -> T:
     try:
         return await awaitable
     except TeslaApiError as err:
-        raise HomeAssistantError(f"Tesla API error {err.status}: {err}") from err
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="api_error",
+            translation_placeholders={"status": str(err.status), "message": str(err)},
+        ) from err
     except (TimeoutError, aiohttp.ClientError) as err:
-        raise HomeAssistantError(f"could not reach Tesla: {err}") from err
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="cannot_connect",
+            translation_placeholders={"error": str(err)},
+        ) from err
 
 
 def _resolve_intervals(entry: ConfigEntry) -> dict[str, int]:
@@ -251,7 +277,7 @@ def _stamp_last_sync(hass: HomeAssistant, entry: ConfigEntry) -> None:
 async def _bootstrap_handler(call: ServiceCall) -> ServiceResponse:
     hass = call.hass
     entry = _resolve_entry(hass, call.data.get(ATTR_ENTRY_ID))
-    api = _entry_api(hass, entry)
+    api = _entry_api(entry)
 
     response: dict[str, Any] = {"vin": entry.data[CONF_VIN]}
 
@@ -288,7 +314,7 @@ async def _bootstrap_handler(call: ServiceCall) -> ServiceResponse:
 async def _resync_handler(call: ServiceCall) -> ServiceResponse:
     hass = call.hass
     entry = _resolve_entry(hass, call.data.get(ATTR_ENTRY_ID))
-    api = _entry_api(hass, entry)
+    api = _entry_api(entry)
     ca_pem = (call.data.get(ATTR_CA_PEM) or DEFAULT_CA_BUNDLE_PEM).strip() + "\n"
     cfg = _build_telemetry_config(entry, ca_pem)
     response = await _tesla_call(
@@ -309,7 +335,7 @@ async def _get_config_handler(call: ServiceCall) -> ServiceResponse:
     having to fish a bearer token out of `.storage`."""
     hass = call.hass
     entry = _resolve_entry(hass, call.data.get(ATTR_ENTRY_ID))
-    api = _entry_api(hass, entry)
+    api = _entry_api(entry)
     vin = entry.data[CONF_VIN]
     response = await _tesla_call(api.get_fleet_telemetry_config(vin))
     _LOGGER.info(
@@ -328,18 +354,18 @@ async def _set_interval_preset_handler(call: ServiceCall) -> ServiceResponse:
     """
     hass = call.hass
     entry = _resolve_entry(hass, call.data.get(ATTR_ENTRY_ID))
-    api = _entry_api(hass, entry)
+    api = _entry_api(entry)
     preset: str = call.data[ATTR_PRESET]
 
-    record = hass.data[DOMAIN][entry.entry_id]
-    previous_pushed = record.get("pushed_intervals")
+    runtime = _entry_runtime(entry)
+    previous_pushed = runtime.pushed_intervals
     new_data = {**entry.data, CONF_INTERVAL_PRESET: preset}
     # Saving the preset fires the entry's update listener, which re-pushes
     # whenever the resolved intervals differ from the last push. This handler
     # pushes itself (it may carry a ca_pem override, and returns Tesla's
     # answer), so mark the new intervals as pushed first or Tesla would get
     # the same config twice; restored below if the push fails.
-    record["pushed_intervals"] = resolve_effective_intervals(
+    runtime.pushed_intervals = resolve_effective_intervals(
         _with_data(entry, new_data)
     )
     hass.config_entries.async_update_entry(entry, data=new_data)
@@ -354,7 +380,7 @@ async def _set_interval_preset_handler(call: ServiceCall) -> ServiceResponse:
             api.set_fleet_telemetry_config(entry.data[CONF_VIN], cfg)
         )
     except HomeAssistantError:
-        record["pushed_intervals"] = previous_pushed
+        runtime.pushed_intervals = previous_pushed
         raise
     _stamp_last_sync(hass, entry)
     intervals = _resolve_intervals(entry)
@@ -383,22 +409,28 @@ def token_allows_commands(entry: ConfigEntry) -> bool:
     return scopes is None or VEHICLE_COMMANDS_SCOPE in scopes
 
 
-def _command_error_message(err: TeslaApiError) -> str:
+def _command_error(err: TeslaApiError) -> HomeAssistantError:
     """Turn a failed command call into something actionable."""
     body = str(err.body or err)[:300]
     if err.status == 408:
-        return "the car is asleep or offline (Tesla 408) — wake it and retry"
+        return HomeAssistantError(
+            translation_domain=DOMAIN, translation_key="vehicle_asleep"
+        )
     if "command protocol" in body.lower():
-        return (
-            "this vehicle only accepts signed commands (Tesla Vehicle Command "
-            "Protocol), which this integration does not implement"
+        return HomeAssistantError(
+            translation_domain=DOMAIN, translation_key="signed_commands_required"
         )
     if err.status == 403:
-        return (
-            "Tesla refused the command (403) — check that the developer app is "
-            f"approved for vehicle commands. Tesla said: {body}"
+        return HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="command_forbidden",
+            translation_placeholders={"message": body},
         )
-    return f"Tesla API error {err.status}: {body}"
+    return HomeAssistantError(
+        translation_domain=DOMAIN,
+        translation_key="api_error",
+        translation_placeholders={"status": str(err.status), "message": body},
+    )
 
 
 async def _navigate_handler(call: ServiceCall) -> ServiceResponse:
@@ -413,17 +445,21 @@ async def _navigate_handler(call: ServiceCall) -> ServiceResponse:
         CONF_ALLOW_VEHICLE_COMMANDS, DEFAULT_ALLOW_VEHICLE_COMMANDS
     ):
         raise ServiceValidationError(
-            f"vehicle commands are off for {entry.title}: turn on \"Allow "
-            "vehicle commands\" in the integration's options"
+            translation_domain=DOMAIN,
+            translation_key="commands_disabled",
+            translation_placeholders={"name": entry.title},
         )
     if not token_allows_commands(entry):
         entry.async_start_reauth(hass)
         raise HomeAssistantError(
-            f"{entry.title}'s Tesla authorization lacks the "
-            f"{VEHICLE_COMMANDS_SCOPE} scope: finish the re-authentication "
-            "under Settings → Devices & services"
+            translation_domain=DOMAIN,
+            translation_key="missing_command_scope",
+            translation_placeholders={
+                "name": entry.title,
+                "scope": VEHICLE_COMMANDS_SCOPE,
+            },
         )
-    api = _entry_api(hass, entry)
+    api = _entry_api(entry)
     vin = entry.data[CONF_VIN]
     try:
         if ATTR_DESTINATION in call.data:
@@ -440,11 +476,19 @@ async def _navigate_handler(call: ServiceCall) -> ServiceResponse:
                 call.data[ATTR_ORDER],
             )
     except ValueError as err:
-        raise ServiceValidationError(str(err)) from err
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="invalid_destination",
+            translation_placeholders={"error": str(err)},
+        ) from err
     except CommandRefused as err:
-        raise HomeAssistantError(f"the car refused the destination: {err}") from err
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="command_refused",
+            translation_placeholders={"reason": str(err)},
+        ) from err
     except TeslaApiError as err:
-        raise HomeAssistantError(_command_error_message(err)) from err
+        raise _command_error(err) from err
     _LOGGER.info("tesla_telemetry: %s delivered to vin=%s", method, vin)
     _LOGGER.debug("tesla_telemetry: %s payload %s", method, dict(call.data))
     return {"vin": vin, "method": method, "result": result}
@@ -455,14 +499,20 @@ async def _dump_public_key_handler(call: ServiceCall) -> ServiceResponse:
     entry = _resolve_entry(hass, call.data.get(ATTR_ENTRY_ID))
     pem = entry.data.get(CONF_PRIVATE_KEY_PEM, "")
     if not pem.strip():
-        raise HomeAssistantError("entry has no private key configured")
+        raise HomeAssistantError(
+            translation_domain=DOMAIN, translation_key="no_private_key"
+        )
 
     from cryptography.hazmat.primitives import serialization
 
     try:
         key = serialization.load_pem_private_key(pem.encode(), password=None)
     except Exception as err:
-        raise HomeAssistantError(f"could not parse private key: {err}") from err
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="bad_private_key",
+            translation_placeholders={"error": str(err)},
+        ) from err
 
     pub_pem = (
         key.public_key()
@@ -483,56 +533,55 @@ async def _dump_public_key_handler(call: ServiceCall) -> ServiceResponse:
 
 
 def async_register_services(hass: HomeAssistant) -> None:
-    """Register all tesla_telemetry services. Idempotent — safe to call
-    on every entry setup."""
-    if not hass.services.has_service(DOMAIN, SERVICE_BOOTSTRAP):
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_BOOTSTRAP,
-            _admin_only(_bootstrap_handler),
-            schema=_BOOTSTRAP_SCHEMA,
-            supports_response=SupportsResponse.OPTIONAL,
-        )
-    if not hass.services.has_service(DOMAIN, SERVICE_RESYNC):
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_RESYNC,
-            _admin_only(_resync_handler),
-            schema=_RESYNC_SCHEMA,
-            supports_response=SupportsResponse.OPTIONAL,
-        )
-    if not hass.services.has_service(DOMAIN, SERVICE_DUMP_PUBLIC_KEY):
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_DUMP_PUBLIC_KEY,
-            _admin_only(_dump_public_key_handler),
-            schema=_DUMP_KEY_SCHEMA,
-            supports_response=SupportsResponse.ONLY,
-        )
-    if not hass.services.has_service(DOMAIN, SERVICE_GET_CONFIG):
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_GET_CONFIG,
-            _admin_only(_get_config_handler),
-            schema=_GET_CONFIG_SCHEMA,
-            supports_response=SupportsResponse.ONLY,
-        )
-    if not hass.services.has_service(DOMAIN, SERVICE_SET_INTERVAL_PRESET):
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_SET_INTERVAL_PRESET,
-            _admin_only(_set_interval_preset_handler),
-            schema=_SET_PRESET_SCHEMA,
-            supports_response=SupportsResponse.OPTIONAL,
-        )
-    if not hass.services.has_service(DOMAIN, SERVICE_NAVIGATE):
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_NAVIGATE,
-            _navigate_handler,
-            schema=_NAVIGATE_SCHEMA,
-            supports_response=SupportsResponse.OPTIONAL,
-        )
+    """Register the integration's service actions.
+
+    Called once from ``async_setup``, which Home Assistant runs once per
+    process for an integration that has config entries, so the registrations
+    are not guarded against repeats: a duplicate ``async_register`` would be a
+    bug here, not something to swallow.
+    """
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_BOOTSTRAP,
+        _admin_only(_bootstrap_handler),
+        schema=_BOOTSTRAP_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_RESYNC,
+        _admin_only(_resync_handler),
+        schema=_RESYNC_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_DUMP_PUBLIC_KEY,
+        _admin_only(_dump_public_key_handler),
+        schema=_DUMP_KEY_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_CONFIG,
+        _admin_only(_get_config_handler),
+        schema=_GET_CONFIG_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_INTERVAL_PRESET,
+        _admin_only(_set_interval_preset_handler),
+        schema=_SET_PRESET_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_NAVIGATE,
+        _navigate_handler,
+        schema=_NAVIGATE_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
 
 
 # ---------------------------------------------------------------------
@@ -565,7 +614,7 @@ async def _auto_resync_if_due(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """
     last = entry.data.get(CONF_LAST_SYNC_AT)
     try:
-        api = _entry_api(hass, entry)
+        api = _entry_api(entry)
     except HomeAssistantError as err:
         # Not debug: with no API client the config is never renewed, and the
         # only symptom is the stream stopping a month later.

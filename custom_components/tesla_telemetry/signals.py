@@ -16,7 +16,7 @@ enumerated at runtime so it tracks proto updates with no hardcoded list.
 The pure resolver (``resolve_effective_intervals``) and the catalog
 (``all_catalog_signals``) deliberately avoid Home Assistant imports so they can
 be unit-tested without the HA test harness; the options-flow schema helpers
-import voluptuous / HA selectors lazily inside the functions that need them.
+import probatio / HA selectors lazily inside the functions that need them.
 """
 from __future__ import annotations
 
@@ -153,18 +153,18 @@ def humanize_signal_name(signal: str) -> str:
 # --------------------------------------------------------------------------
 # Options-flow schema helpers.
 #
-# HA / voluptuous imports are lazy so importing this module (for the resolver
+# HA / probatio imports are lazy so importing this module (for the resolver
 # above) never requires Home Assistant to be installed.
 # --------------------------------------------------------------------------
 def build_options_schema(entry: Any) -> Any:
-    """Voluptuous schema for the options form.
+    """Probatio schema for the options form.
 
     One collapsible section per curated category (a number field per signal,
     0 = disabled), an "Additional signals" section for catalog signals the
     user has added, an "Add signals" picker over the rest of the catalog, and
     the estimated-cost rate.
     """
-    import voluptuous as vol
+    import probatio
 
     from homeassistant import data_entry_flow
     from homeassistant.helpers import selector
@@ -180,20 +180,20 @@ def build_options_schema(entry: Any) -> Any:
         fields: dict[Any, Any] = {}
         for signal in signals:
             current = overrides.get(signal, default_for(signal))
-            fields[vol.Optional(signal, default=current)] = vol.All(
-                vol.Coerce(int), vol.Range(min=0, max=SIGNAL_INTERVAL_MAX)
+            fields[probatio.Optional(signal, default=current)] = probatio.All(
+                probatio.Coerce(int), probatio.Range(min=0, max=SIGNAL_INTERVAL_MAX)
             )
-        return data_entry_flow.section(vol.Schema(fields), {"collapsed": True})
+        return data_entry_flow.section(probatio.Schema(fields), {"collapsed": True})
 
     schema: dict[Any, Any] = {}
     for category, signals in SIGNAL_CATEGORIES.items():
-        schema[vol.Required(category)] = _section(
+        schema[probatio.Required(category)] = _section(
             signals, lambda s: DEFAULT_INTERVALS_SECONDS.get(s, 0)
         )
 
     extras = additional_signals(entry)
     if extras:
-        schema[vol.Required("additional")] = _section(
+        schema[probatio.Required("additional")] = _section(
             extras, lambda s: DEFAULT_NEW_SIGNAL_INTERVAL
         )
 
@@ -202,10 +202,10 @@ def build_options_schema(entry: Any) -> Any:
         for s in all_catalog_signals()
         if s not in _curated_signals() and s not in overrides
     ]
-    schema[vol.Required("add_signals")] = data_entry_flow.section(
-        vol.Schema(
+    schema[probatio.Required("add_signals")] = data_entry_flow.section(
+        probatio.Schema(
             {
-                vol.Optional("signals", default=list): selector.SelectSelector(
+                probatio.Optional("signals", default=list): selector.SelectSelector(
                     # ``addable`` is already sorted by all_catalog_signals().
                     selector.SelectSelectorConfig(
                         options=addable,
@@ -222,18 +222,18 @@ def build_options_schema(entry: Any) -> Any:
     current_cost = (getattr(entry, "options", None) or {}).get(
         CONF_COST_PER_MILLION_SIGNALS, DEFAULT_COST_PER_MILLION_SIGNALS
     )
-    schema[vol.Required("cost")] = data_entry_flow.section(
-        vol.Schema(
+    schema[probatio.Required("cost")] = data_entry_flow.section(
+        probatio.Schema(
             {
-                vol.Optional(
+                probatio.Optional(
                     CONF_COST_PER_MILLION_SIGNALS, default=current_cost
-                ): vol.All(vol.Coerce(float), vol.Range(min=0)),
+                ): probatio.All(probatio.Coerce(float), probatio.Range(min=0)),
             }
         ),
         {"collapsed": True},
     )
 
-    return vol.Schema(schema)
+    return probatio.Schema(schema)
 
 
 def parse_options_input(entry: Any, user_input: dict[str, Any]) -> dict[str, Any]:

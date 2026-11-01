@@ -35,7 +35,7 @@ from collections.abc import Mapping
 from typing import Any
 
 import aiohttp
-import voluptuous as vol
+import probatio
 
 from homeassistant import data_entry_flow
 from homeassistant.config_entries import (
@@ -124,9 +124,9 @@ class TeslaTelemetryOAuth2FlowHandler(
         if user_input is not None:
             self._region = user_input[CONF_REGION]
             return await self.async_step_vehicle()
-        schema = vol.Schema(
+        schema = probatio.Schema(
             {
-                vol.Required(CONF_REGION, default=self._region): selector.SelectSelector(
+                probatio.Required(CONF_REGION, default=self._region): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=list(SELECTABLE_REGIONS),
                         translation_key="region",
@@ -262,7 +262,7 @@ class TeslaTelemetryOAuth2FlowHandler(
             for v in self._vehicles
             if v.get("vin")
         }
-        schema = vol.Schema({vol.Required(CONF_VIN): vol.In(vin_options)})
+        schema = probatio.Schema({probatio.Required(CONF_VIN): probatio.In(vin_options)})
         return self.async_show_form(
             step_id="vehicle", data_schema=schema, errors=errors
         )
@@ -326,17 +326,17 @@ class TeslaTelemetryOAuth2FlowHandler(
             existing = self._async_current_entries()
             suggested = dict(existing[0].data) if existing else {}
 
-        schema = vol.Schema(
+        schema = probatio.Schema(
             {
-                vol.Required(CONF_HOSTNAME): str,
-                vol.Required(CONF_PORT, default=443): vol.All(
-                    vol.Coerce(int), vol.Range(min=1, max=65535)
+                probatio.Required(CONF_HOSTNAME): str,
+                probatio.Required(CONF_PORT, default=443): probatio.All(
+                    probatio.Coerce(int), probatio.Range(min=1, max=65535)
                 ),
-                vol.Required(CONF_PARTNER_DOMAIN): str,
-                vol.Required(
+                probatio.Required(CONF_PARTNER_DOMAIN): str,
+                probatio.Required(
                     CONF_PROXY_SECRET, default=self._default_proxy_secret
                 ): str,
-                vol.Required(CONF_PRIVATE_KEY_PEM): selector.TextSelector(
+                probatio.Required(CONF_PRIVATE_KEY_PEM): selector.TextSelector(
                     selector.TextSelectorConfig(multiline=True)
                 ),
             }
@@ -398,20 +398,20 @@ class TeslaTelemetryOptionsFlow(OptionsFlow):
         teslamate = self.config_entry.options.get(CONF_TESLAMATE_BRIDGE, False)
         schema = build_options_schema(self.config_entry).extend(
             {
-                vol.Required("vehicle_commands"): data_entry_flow.section(
-                    vol.Schema(
+                probatio.Required("vehicle_commands"): data_entry_flow.section(
+                    probatio.Schema(
                         {
-                            vol.Optional(
+                            probatio.Optional(
                                 CONF_ALLOW_VEHICLE_COMMANDS, default=allowed
                             ): bool,
                         }
                     ),
                     {"collapsed": not allowed},
                 ),
-                vol.Required("teslamate"): data_entry_flow.section(
-                    vol.Schema(
+                probatio.Required("teslamate"): data_entry_flow.section(
+                    probatio.Schema(
                         {
-                            vol.Optional(
+                            probatio.Optional(
                                 CONF_TESLAMATE_BRIDGE, default=teslamate
                             ): bool,
                         }
