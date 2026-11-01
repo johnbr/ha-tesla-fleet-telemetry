@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.12.0...v0.12.1) (2026-11-01)
+
+
+### Bug Fixes
+
+* close the bridge's teardown gaps ([#50](https://github.com/johnbr/ha-tesla-fleet-telemetry/issues/50)) ([ed29e96](https://github.com/johnbr/ha-tesla-fleet-telemetry/commit/ed29e96cfa418a26263414f6c5ae4188f823b6a5))
+
 ## [0.12.0](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.11.5...v0.12.0) (2026-10-31)
 
 
