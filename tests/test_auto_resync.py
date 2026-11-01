@@ -80,7 +80,10 @@ def _stubs() -> dict[str, ModuleType]:
         "aiohttp": _module("aiohttp"),
         "homeassistant": _module("homeassistant"),
         "homeassistant.config_entries": _module(
-            "homeassistant.config_entries", ConfigEntry=type("ConfigEntry", (), {})
+            "homeassistant.config_entries",
+            ConfigEntry=type("ConfigEntry", (), {}),
+            # models.runtime_data_if_loaded() compares against this.
+            ConfigEntryState=SimpleNamespace(LOADED="loaded"),
         ),
         "homeassistant.const": _module(
             "homeassistant.const", ATTR_LATITUDE="latitude", ATTR_LONGITUDE="longitude"
@@ -187,7 +190,7 @@ def run(
 ) -> Hass:
     """Run one check against ``entry`` with ``api`` standing in for Tesla."""
     hass = Hass(entry)
-    monkeypatch.setattr(services, "_entry_api", lambda _hass, _entry: api)
+    monkeypatch.setattr(services, "_entry_api", lambda _entry: api)
     monkeypatch.setattr(
         services, "_build_telemetry_config", lambda _entry, _ca: {"sent": True}
     )
@@ -272,7 +275,7 @@ class TestAdoptingAnInheritedConfig:
         """The answer decides the renewal, so it is not cached."""
         entry, api = Entry(), FakeApi(config_for("someone-else.example.com"))
         hass = Hass(entry)
-        monkeypatch.setattr(services, "_entry_api", lambda _hass, _entry: api)
+        monkeypatch.setattr(services, "_entry_api", lambda _entry: api)
         monkeypatch.setattr(
             services, "_build_telemetry_config", lambda _entry, _ca: {"sent": True}
         )

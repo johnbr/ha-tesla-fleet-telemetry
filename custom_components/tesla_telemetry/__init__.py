@@ -7,7 +7,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import aiohttp_client, config_entry_oauth2_flow
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.typing import ConfigType
 
 from .const import (
     CONF_ALLOW_VEHICLE_COMMANDS,
@@ -23,6 +25,7 @@ from .const import (
     proxy_secret_is_strong,
 )
 from .coordinator import TeslaTelemetryCoordinator, signals_changed_topic
+from .models import TeslaTelemetryRuntimeData, runtime_data_if_loaded
 from .receiver import TeslaTelemetryView
 from .services import (
     async_register_services,
@@ -45,6 +48,20 @@ PLATFORMS: list[Platform] = [
     Platform.DEVICE_TRACKER,
     Platform.SENSOR,
 ]
+
+# YAML setup is not supported: the integration is config-entry only.
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Register the integration's service actions once per Home Assistant run.
+
+    Actions are registered here rather than in ``async_setup_entry`` so they
+    exist independently of any one entry's lifetime, and so an entry that
+    fails to set up does not leave them missing.
+    """
+    async_register_services(hass)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -134,18 +151,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await ensure_vehicle_id(hass, entry, api)
         setup_bridge(hass, entry, vin, secrets_by_vin, coordinators_by_vin)
 
-    domain_data[entry.entry_id] = {
-        "coordinator": coordinator,
-        "vin": vin,
-        "api": api,
-        "teslamate": teslamate,
+    entry.runtime_data = TeslaTelemetryRuntimeData(
+        coordinator=coordinator,
+        vin=vin,
+        api=api,
+        teslamate=teslamate,
         # Last config we pushed to the car, so the options-update listener can
         # skip redundant re-pushes. Assume the car already holds the current
         # resolved config (bootstrap/auto-resync keep it reconciled).
-        "pushed_intervals": dict(coordinator.effective_intervals),
-    }
+        pushed_intervals=dict(coordinator.effective_intervals),
+    )
 
-    async_register_services(hass)
     _async_check_command_scope(hass, entry)
 
     # Daily check that re-pushes the telemetry config once the copy the car
@@ -176,16 +192,16 @@ async def _async_options_updated(
     entity simply stops receiving; generic entities for catalog-added signals
     are added/removed by the sensor platform via ``signals_changed_topic``.
     """
-    record = hass.data.get(DOMAIN, {}).get(entry.entry_id)
-    if not record:
+    runtime = runtime_data_if_loaded(entry)
+    if runtime is None:
         return
     # Turning the TeslaMate bridge on or off changes what setup registers, so
     # it needs a full reload rather than an in-place update.
-    if record.get("teslamate") != bridge_enabled(entry):
+    if runtime.teslamate != bridge_enabled(entry):
         await hass.config_entries.async_reload(entry.entry_id)
         return
     _async_check_command_scope(hass, entry)
-    coordinator: TeslaTelemetryCoordinator = record["coordinator"]
+    coordinator: TeslaTelemetryCoordinator = runtime.coordinator
     new_intervals = resolve_effective_intervals(entry)
     coordinator.effective_intervals = new_intervals
     # Add/remove generic entities for catalog-added signals. Sent before the
@@ -196,17 +212,17 @@ async def _async_options_updated(
     # Skip a redundant push when the effective config is unchanged — e.g. only
     # the cost rate was edited, or this fired from our own last_sync stamp
     # below (which breaks what would otherwise be an update loop).
-    if record.get("pushed_intervals") == new_intervals:
+    if runtime.pushed_intervals == new_intervals:
         return
 
     # Don't push for an entry that hasn't been bootstrapped/authorized yet; its
     # first bootstrap will push the current config. Record the marker so an
     # unrelated later update doesn't push either.
     if not entry.data.get(CONF_LAST_SYNC_AT):
-        record["pushed_intervals"] = new_intervals
+        runtime.pushed_intervals = new_intervals
         return
 
-    api = record.get("api")
+    api = runtime.api
     if api is None:
         return
 
@@ -223,7 +239,7 @@ async def _async_options_updated(
             err,
         )
         return
-    record["pushed_intervals"] = new_intervals
+    runtime.pushed_intervals = new_intervals
     _stamp_last_sync(hass, entry)
     _LOGGER.info(
         "tesla_telemetry: options change re-pushed telemetry config for "
@@ -268,11 +284,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if unload_ok:
         domain_data = hass.data.get(DOMAIN, {})
-        record = domain_data.pop(entry.entry_id, None)
-        if record is not None:
-            domain_data.get("coordinators_by_vin", {}).pop(record["vin"], None)
-            domain_data.get("secrets_by_vin", {}).pop(record["vin"], None)
-            unload_bridge(hass, record["vin"])
+        # The platforms unloaded, so setup had run and runtime_data is there.
+        runtime = entry.runtime_data
+        domain_data.get("coordinators_by_vin", {}).pop(runtime.vin, None)
+        domain_data.get("secrets_by_vin", {}).pop(runtime.vin, None)
+        unload_bridge(hass, runtime.vin)
         # The view + services stay registered: HA does not support
         # unregistering them without a restart. With no entries left, the
         # view's empty routing table rejects any subsequent connection with
