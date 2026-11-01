@@ -1,4 +1,9 @@
 pytest>=8
 cryptography>=42
 protobuf>=4.25,<8
-voluptuous>=0.13
+# Probatio comes from Home Assistant, not the manifest: 0.11.4 in 2026.9.0,
+# 0.13.0 from 2026.10. Everything this integration uses — Schema, Required,
+# Optional, All, Coerce, Range, In, Inclusive, Match — behaves identically on
+# both, so the newest is installed here and the 2026.9 floor is documented in
+# the README.
+probatio>=0.11.4

@@ -16,14 +16,12 @@ from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
-    DOMAIN,
     SIGNAL_CHARGE_PORT_DOOR_OPEN,
     SIGNAL_CHARGING_CABLE_TYPE,
     SIGNAL_DETAILED_CHARGE_STATE,
@@ -40,6 +38,7 @@ from .coordinator import (
     TeslaTelemetryCoordinator,
     signal_dispatcher_topic,
 )
+from .models import TeslaTelemetryConfigEntry
 from .values import (
     value_as_bool,
     value_as_door_state,
@@ -53,45 +52,43 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: TeslaTelemetryConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    coordinator: TeslaTelemetryCoordinator = hass.data[DOMAIN][entry.entry_id][
-        "coordinator"
-    ]
+    coordinator: TeslaTelemetryCoordinator = entry.runtime_data.coordinator
     async_add_entities(
         [
             # Doors (each derives one bool from the Doors composite struct)
             DoorBinarySensor(
-                coordinator, "front_driver", "DriverFront", "Front driver door"
+                coordinator, "front_driver", "DriverFront", "door_front_driver"
             ),
             DoorBinarySensor(
                 coordinator,
                 "front_passenger",
                 "PassengerFront",
-                "Front passenger door",
+                "door_front_passenger",
             ),
             DoorBinarySensor(
-                coordinator, "rear_driver", "DriverRear", "Rear driver door"
+                coordinator, "rear_driver", "DriverRear", "door_rear_driver"
             ),
             DoorBinarySensor(
                 coordinator,
                 "rear_passenger",
                 "PassengerRear",
-                "Rear passenger door",
+                "door_rear_passenger",
             ),
             DoorBinarySensor(
                 coordinator,
                 "frunk",
                 "TrunkFront",
-                "Frunk",
+                "frunk",
                 device_class=BinarySensorDeviceClass.OPENING,
             ),
             DoorBinarySensor(
                 coordinator,
                 "trunk",
                 "TrunkRear",
-                "Trunk",
+                "trunk",
                 device_class=BinarySensorDeviceClass.OPENING,
             ),
             # Windows
@@ -99,25 +96,25 @@ async def async_setup_entry(
                 coordinator,
                 SIGNAL_WINDOW_FRONT_DRIVER,
                 "front_driver",
-                "Front driver window",
+                "window_front_driver",
             ),
             WindowBinarySensor(
                 coordinator,
                 SIGNAL_WINDOW_FRONT_PASSENGER,
                 "front_passenger",
-                "Front passenger window",
+                "window_front_passenger",
             ),
             WindowBinarySensor(
                 coordinator,
                 SIGNAL_WINDOW_REAR_DRIVER,
                 "rear_driver",
-                "Rear driver window",
+                "window_rear_driver",
             ),
             WindowBinarySensor(
                 coordinator,
                 SIGNAL_WINDOW_REAR_PASSENGER,
                 "rear_passenger",
-                "Rear passenger window",
+                "window_rear_passenger",
             ),
             # Other body / charging
             LockBinarySensor(coordinator),
@@ -190,13 +187,13 @@ class DoorBinarySensor(_BaseTelemetryBinarySensor):
         coordinator: TeslaTelemetryCoordinator,
         slug: str,
         bit_name: str,
-        name: str,
+        key: str,
         *,
         device_class: BinarySensorDeviceClass = BinarySensorDeviceClass.DOOR,
     ) -> None:
         super().__init__(coordinator)
         self._bit_name = bit_name
-        self._attr_name = name
+        self._attr_translation_key = key
         self._attr_unique_id = f"{coordinator.vin}_door_{slug}_telemetry"
         self._attr_device_class = device_class
 
@@ -216,11 +213,11 @@ class WindowBinarySensor(_BaseTelemetryBinarySensor):
         coordinator: TeslaTelemetryCoordinator,
         signal: str,
         slug: str,
-        name: str,
+        key: str,
     ) -> None:
         super().__init__(coordinator)
         self._signal_name = signal
-        self._attr_name = name
+        self._attr_translation_key = key
         self._attr_unique_id = f"{coordinator.vin}_window_{slug}_telemetry"
 
     def _handle(self, sample: SignalSample) -> None:
@@ -234,13 +231,13 @@ def _bool_binary_sensor(
     *,
     signal: str,
     slug: str,
-    name: str,
+    key: str,
     device_class: BinarySensorDeviceClass | None = None,
     extractor: Callable[[Any], bool | None] = value_as_bool,
 ) -> type[_BaseTelemetryBinarySensor]:
     class _BS(_BaseTelemetryBinarySensor):
         _signal_name = signal
-        _attr_name = name
+        _attr_translation_key = key
         _attr_device_class = device_class
 
         def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:
@@ -261,7 +258,7 @@ class LockBinarySensor(_BaseTelemetryBinarySensor):
     """
 
     _signal_name = SIGNAL_LOCKED
-    _attr_name = "Lock"
+    _attr_translation_key = "lock"
     _attr_device_class = BinarySensorDeviceClass.LOCK
 
     def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:
@@ -276,7 +273,7 @@ class LockBinarySensor(_BaseTelemetryBinarySensor):
 ChargePortBinarySensor = _bool_binary_sensor(
     signal=SIGNAL_CHARGE_PORT_DOOR_OPEN,
     slug="charge_port_door_open_telemetry",
-    name="Charge port door",
+    key="charge_port_door",
     device_class=BinarySensorDeviceClass.OPENING,
 )
 
@@ -301,7 +298,7 @@ class ChargeCableBinarySensor(_BaseTelemetryBinarySensor):
     """
 
     _signal_name = SIGNAL_CHARGING_CABLE_TYPE
-    _attr_name = "Charge cable"
+    _attr_translation_key = "charge_cable"
     _attr_device_class = BinarySensorDeviceClass.PLUG
 
     def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:
@@ -320,7 +317,7 @@ class ChargeCableBinarySensor(_BaseTelemetryBinarySensor):
 UserPresentBinarySensor = _bool_binary_sensor(
     signal=SIGNAL_DRIVER_SEAT_OCCUPIED,
     slug="user_present_telemetry",
-    name="User present",
+    key="user_present",
     device_class=BinarySensorDeviceClass.OCCUPANCY,
 )
 
@@ -329,7 +326,7 @@ class ChargingActiveBinarySensor(_BaseTelemetryBinarySensor):
     """True while the car is actively pulling charge (Charging or Starting)."""
 
     _signal_name = SIGNAL_DETAILED_CHARGE_STATE
-    _attr_name = "Charging"
+    _attr_translation_key = "charging"
     _attr_device_class = BinarySensorDeviceClass.BATTERY_CHARGING
 
     def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:

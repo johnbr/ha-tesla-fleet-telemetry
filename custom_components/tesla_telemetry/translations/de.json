@@ -1,0 +1,459 @@
+{
+  "config": {
+    "step": {
+      "pick_implementation": {
+        "title": "Tesla-Entwickler-App-Zugangsdaten auswählen",
+        "description": "Wähle vorhandene Zugangsdaten der Anwendung oder füge neue hinzu. Verwende dieselbe client_id und dasselbe client_secret, die du für `tesla_fleet` registriert hast — jede Integration durchläuft OAuth unabhängig und erhält ein eigenes Refresh-Token, sodass sie sich nicht mehr gegenseitig die Tokens wegrotieren."
+      },
+      "auth": {
+        "title": "Bei Tesla autorisieren"
+      },
+      "region": {
+        "title": "Region",
+        "description": "Tesla stellt Fleet-API-Konten über regionale Endpunkte bereit. Die aus deinem Tesla-Konto erkannte Region ist vorausgewählt — bestätige sie oder korrigiere sie bei Bedarf.",
+        "data": {
+          "region": "Region"
+        }
+      },
+      "vehicle": {
+        "title": "Fahrzeug auswählen",
+        "description": "Wähle die VIN aus, die diese Integration verfolgen soll.",
+        "data": {
+          "vin": "Fahrzeug"
+        }
+      },
+      "endpoint": {
+        "title": "Telemetrie-Endpunkt",
+        "description": "Lege fest, wie Tesla Home Assistant erreicht. Der Hostname muss öffentlich auflösbar sein und ein TLS-Zertifikat vorweisen, das für die Zertifikatskette gültig ist, die du in `fleet_telemetry_config.ca` einträgst. Das Proxy-Geheimnis ist der Wert, den nginx bei jeder weitergeleiteten Anfrage als `X-Tesla-Proxy-Secret` setzt — übernimm es in deine nginx-Konfiguration. Es muss mindestens {min_secret_length} Zeichen lang sein: Es ist das Einzige, was den Endpunkt authentifiziert, der über den Home-Assistant-Port erreichbar ist.\n\nDer private Partner-Schlüssel ist der EC-P-256-Schlüssel (secp256r1), dessen öffentliches Gegenstück unter `https://deine-partner-domain/.well-known/appspecific/com.tesla.3p.public-key.pem` bereitgestellt wird. Falls du noch keinen hast, erzeuge ihn mit `openssl ecparam -genkey -name prime256v1 -noout -out partner.key` und füge den Dateiinhalt unten ein.\n\nBeim Hinzufügen eines weiteren Fahrzeugs sind diese Felder aus deiner bestehenden Einrichtung vorausgefüllt — lass sie unverändert, sofern sich dein Aufbau nicht geändert hat.",
+        "data": {
+          "hostname": "Öffentlicher Hostname (z. B. tesla-telemetry.example.com)",
+          "port": "Port",
+          "partner_domain": "Partner-Domain (wo .well-known gehostet wird)",
+          "proxy_secret": "Gemeinsames Proxy-Geheimnis",
+          "private_key_pem": "Privater Partner-Schlüssel (PEM)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Bei Tesla erneut authentifizieren",
+        "description": "{name} benötigt eine neue Tesla-Autorisierung. Das passiert, wenn „Fahrzeugbefehle erlauben“ aktiv ist, die aktuelle Autorisierung aber nicht den Scope vehicle_cmds umfasst — beim Fortfahren wirst du zu Tesla geleitet, um ihn zu erteilen. Am Eintrag ändert sich sonst nichts."
+      }
+    },
+    "error": {
+      "vin_not_found": "Diese VIN gehört nicht zu diesem Konto.",
+      "bad_key": "Der private Schlüssel konnte nicht gelesen werden. Er muss ein PEM-kodierter privater Schlüssel sein.",
+      "wrong_curve": "Der Schlüssel muss EC P-256 (Kurve secp256r1) sein.",
+      "weak_proxy_secret": "Das Proxy-Geheimnis muss mindestens {min_secret_length} Zeichen lang sein. Es ist das Einzige, was den Telemetrie-Endpunkt authentifiziert — behalte daher das generierte bei, sofern du kein stärkeres hast."
+    },
+    "abort": {
+      "already_configured": "Dieses Fahrzeug ist bereits eingerichtet.",
+      "missing_credentials": "Keine Zugangsdaten der Anwendung konfiguriert. Füge sie unter Einstellungen → Geräte & Dienste → Anwendungsanmeldedaten hinzu.",
+      "missing_configuration": "Die Zugangsdaten der Anwendung fehlen. Füge sie hinzu und versuche es erneut.",
+      "no_url_available": "Keine URL für den OAuth-Rückruf verfügbar. Konfiguriere eine externe URL oder my.home-assistant.io.",
+      "user_rejected_authorize": "Der Benutzer hat die Autorisierungsanfrage abgelehnt.",
+      "authorize_url_timeout": "Zeitüberschreitung beim Erzeugen der Autorisierungs-URL.",
+      "authorize_url_fail": "Die Autorisierungs-URL konnte nicht erzeugt werden.",
+      "oauth_error": "Tesla hat einen OAuth-Fehler zurückgegeben.",
+      "oauth_failed": "Der OAuth-Ablauf konnte nicht abgeschlossen werden.",
+      "oauth_timeout": "Zeitüberschreitung beim Abschließen des OAuth-Ablaufs.",
+      "oauth_unauthorized": "Tesla hat den OAuth-Ablauf abgelehnt — der Entwickler-App sind die angeforderten Scopes möglicherweise nicht genehmigt.",
+      "oauth_unknown_error": "Unbekannter OAuth-Fehler.",
+      "no_vehicles": "Tesla hat für dieses Konto keine Fahrzeuge zurückgegeben.",
+      "cannot_connect": "Tesla ist nicht erreichbar. Prüfe die Netzwerkverbindung und versuche es erneut.",
+      "reauth_successful": "Die erneute Authentifizierung war erfolgreich.",
+      "reauth_wrong_account": "Dieses Tesla-Konto kann das Fahrzeug dieses Eintrags nicht sehen. Melde dich mit dem Konto an, dem es gehört."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Telemetrie-Signale",
+        "description": "Lege fest, welche Signale das Fahrzeug überträgt und wie oft. Jeder Wert ist die minimale Anzahl Sekunden zwischen zwei Aktualisierungen dieses Signals — Tesla sendet bei Änderung und höchstens einmal pro Intervall, es ist also eine Obergrenze für stark schwankende Signale und kein Abfrageintervall. Setze ein Signal auf 0, um es zu deaktivieren. Beim Speichern wird die Konfiguration erneut an das Fahrzeug übertragen (kein Bootstrap nötig). Unveränderte Werte behalten die eingebauten Standardwerte.",
+        "sections": {
+          "driving": {
+            "name": "Fahren & Navigation",
+            "description": "Standort, Geschwindigkeit, Gang, aktive Route und FSD-Strecke. 0 deaktiviert ein Signal."
+          },
+          "battery": {
+            "name": "Batterie & Reichweite",
+            "description": "Ladezustand und Reichweitenschätzungen. 0 deaktiviert ein Signal."
+          },
+          "charging": {
+            "name": "Laden",
+            "description": "Ladestatus, Leistung und Energie, Ladekabel und Ladelimit. 0 deaktiviert ein Signal."
+          },
+          "climate": {
+            "name": "Klima & Innenraum",
+            "description": "Innen- und Außentemperatur sowie Klimasignale. 0 deaktiviert ein Signal."
+          },
+          "body": {
+            "name": "Karosserie & Sicherheit",
+            "description": "Türen, Fenster, Verriegelung und Sitzbelegung. 0 deaktiviert ein Signal."
+          },
+          "software": {
+            "name": "Software-Update",
+            "description": "Update-Version sowie Download- und Installationsfortschritt. 0 deaktiviert ein Signal."
+          },
+          "powertrain": {
+            "name": "Antrieb & Temperatur",
+            "description": "Temperaturen von Antriebseinheiten und Batteriemodulen. 0 deaktiviert ein Signal."
+          },
+          "additional": {
+            "name": "Zusätzliche Signale",
+            "description": "Signale, die du aus dem vollständigen Katalog hinzugefügt hast. 0 entfernt ein Signal."
+          },
+          "add_signals": {
+            "name": "Signale aus dem vollständigen Tesla-Katalog hinzufügen",
+            "description": "Wähle ein beliebiges Signal aus dem vollständigen Tesla-Katalog, um es zu übertragen; beim nächsten Öffnen dieses Dialogs erscheint es oben mit einem eigenen Intervall. Jedes hinzugefügte Signal erhält außerdem einen danach benannten Sensor (Zahlen als Messwert, alles andere als Text); der Wert 0 entfernt sowohl das Signal als auch seinen Sensor. Jedes hinzugefügte Signal zählt zu deiner Signalrechnung. Nicht jedes Fahrzeug sendet jedes Signal — ältere Fahrzeuge melden manche nie, dann bleibt der Sensor unbekannt.",
+            "data": {
+              "signals": "Hinzuzufügende Signale"
+            }
+          },
+          "cost": {
+            "name": "Kostenschätzung für Signale",
+            "description": "Tesla rechnet pro übertragenem Signal ab (einer pro Datenpunkt). Dieser Satz steuert nur den Sensor „Geschätzte Signalkosten“ — er ändert nicht, was Tesla berechnet. Der Standardwert (≈ 6,67 pro Million) entspricht Teslas veröffentlichtem US-Preis von etwa 1 $ pro 150.000 Signale.",
+            "data": {
+              "cost_per_million_signals": "Geschätzte Kosten pro 1.000.000 Signale"
+            }
+          },
+          "vehicle_commands": {
+            "name": "Fahrzeugbefehle",
+            "description": "Standardmäßig aus: Die Integration liest nur Telemetrie. Wenn du dies einschaltest, wird der Dienst „Ziel an das Fahrzeug senden“ aktiviert und — falls der aktuellen Autorisierung der Scope vehicle_cmds fehlt — eine erneute Authentifizierung gestartet, die ihn bei Tesla anfordert. Funktioniert nur bei Fahrzeugen, die unsignierte Fleet-API-Befehle akzeptieren (Model S/X vor Baujahr 2021).",
+            "data": {
+              "allow_vehicle_commands": "Fahrzeugbefehle erlauben"
+            }
+          },
+          "teslamate": {
+            "name": "TeslaMate-Brücke",
+            "description": "Standardmäßig aus. Stellt TeslaMate den Live-Stream dieses Fahrzeugs im Streaming-Protokoll bereit, das dessen TESLA_WSS_HOST erwartet, sodass das Fahrzeug nur einmal überträgt und beide Systeme davon lesen. Beim Aktivieren entsteht ein WebSocket-Endpunkt auf dem HTTP-Server von Home Assistant, der nicht die Anmeldung von Home Assistant verwendet; er ist durch dasselbe Proxy-Geheimnis geschützt, das der Fahrzeug-Endpunkt bereits nutzt — halte diesen Endpunkt daher in deinem LAN. Wirksam beim Neuladen des Eintrags.",
+            "data": {
+              "teslamate_bridge": "Den Telemetrie-Stream für TeslaMate bereitstellen"
+            }
+          }
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "vehicle_speed": {
+        "name": "Geschwindigkeit"
+      },
+      "gps_heading": {
+        "name": "Fahrtrichtung"
+      },
+      "miles_to_arrival": {
+        "name": "Entfernung bis zur Ankunft"
+      },
+      "time_to_arrival": {
+        "name": "Zeit bis zur Ankunft"
+      },
+      "gear": {
+        "name": "Gang"
+      },
+      "self_driving_miles": {
+        "name": "Selbstfahrstrecke"
+      },
+      "battery_level": {
+        "name": "Batteriestand"
+      },
+      "soc": {
+        "name": "Ladezustand"
+      },
+      "battery_range": {
+        "name": "Batteriereichweite"
+      },
+      "rated_range": {
+        "name": "Typische Reichweite"
+      },
+      "charging_state": {
+        "name": "Ladestatus"
+      },
+      "ac_charging_power": {
+        "name": "AC-Ladeleistung"
+      },
+      "dc_charging_power": {
+        "name": "DC-Ladeleistung"
+      },
+      "ac_charging_energy_in": {
+        "name": "AC-Ladeenergie hinzugefügt"
+      },
+      "dc_charging_energy_in": {
+        "name": "DC-Ladeenergie hinzugefügt"
+      },
+      "fast_charger_type": {
+        "name": "Schnelllader-Typ"
+      },
+      "charging_cable": {
+        "name": "Ladekabeltyp"
+      },
+      "charge_limit": {
+        "name": "Ladelimit"
+      },
+      "time_to_full_charge": {
+        "name": "Zeit zum vollständigen Aufladen"
+      },
+      "inside_temperature": {
+        "name": "Innentemperatur"
+      },
+      "outside_temperature": {
+        "name": "Außentemperatur"
+      },
+      "software_version": {
+        "name": "Softwareversion"
+      },
+      "software_update_download": {
+        "name": "Software-Update-Download"
+      },
+      "software_update_install": {
+        "name": "Software-Update-Installation"
+      },
+      "motor_stator_temp_front": {
+        "name": "Stator-Temperatur vorderer Motor"
+      },
+      "motor_stator_temp_rear": {
+        "name": "Stator-Temperatur hinterer Motor"
+      },
+      "battery_module_temp_max": {
+        "name": "Batterietemperatur (max.)"
+      },
+      "battery_module_temp_min": {
+        "name": "Batterietemperatur (min.)"
+      },
+      "battery_temp_avg": {
+        "name": "Batterietemperatur (Durchschnitt)"
+      },
+      "signals_received": {
+        "name": "Empfangene Signale"
+      },
+      "estimated_signal_cost": {
+        "name": "Geschätzte Signalkosten"
+      }
+    },
+    "binary_sensor": {
+      "door_front_driver": {
+        "name": "Fahrertür vorne"
+      },
+      "door_front_passenger": {
+        "name": "Beifahrertür vorne"
+      },
+      "door_rear_driver": {
+        "name": "Fahrertür hinten"
+      },
+      "door_rear_passenger": {
+        "name": "Beifahrertür hinten"
+      },
+      "frunk": {
+        "name": "Front-Kofferraum"
+      },
+      "trunk": {
+        "name": "Kofferraum"
+      },
+      "window_front_driver": {
+        "name": "Fahrerfenster vorne"
+      },
+      "window_front_passenger": {
+        "name": "Beifahrerfenster vorne"
+      },
+      "window_rear_driver": {
+        "name": "Fahrerfenster hinten"
+      },
+      "window_rear_passenger": {
+        "name": "Beifahrerfenster hinten"
+      },
+      "lock": {
+        "name": "Schloss"
+      },
+      "charge_port_door": {
+        "name": "Ladeanschluss-Klappe"
+      },
+      "charge_cable": {
+        "name": "Ladekabel"
+      },
+      "charging": {
+        "name": "Aufladung"
+      },
+      "user_present": {
+        "name": "Benutzer anwesend"
+      }
+    },
+    "device_tracker": {
+      "location": {
+        "name": "Standort"
+      },
+      "route": {
+        "name": "Route"
+      }
+    }
+  },
+  "exceptions": {
+    "api_error": {
+      "message": "Tesla-API-Fehler {status}: {message}"
+    },
+    "bad_private_key": {
+      "message": "Der private Partner-Schlüssel konnte nicht gelesen werden: {error}"
+    },
+    "cannot_connect": {
+      "message": "Tesla ist nicht erreichbar: {error}"
+    },
+    "command_forbidden": {
+      "message": "Tesla hat den Befehl abgelehnt (403) — prüfe, ob die Entwickler-App für Fahrzeugbefehle genehmigt ist. Tesla meldet: {message}"
+    },
+    "command_refused": {
+      "message": "Das Fahrzeug hat das Ziel abgelehnt: {reason}"
+    },
+    "commands_disabled": {
+      "message": "Fahrzeugbefehle sind für {name} aus: Aktiviere „Fahrzeugbefehle erlauben“ in den Optionen der Integration."
+    },
+    "entry_not_found": {
+      "message": "Unbekannter Konfigurationseintrag von Tesla Fleet Telemetry: {entry_id}"
+    },
+    "entry_not_loaded": {
+      "message": "Der Konfigurationseintrag {entry_id} ist nicht eingerichtet — lade die Integration neu und versuche es erneut."
+    },
+    "invalid_destination": {
+      "message": "Ungültiges Ziel: {error}"
+    },
+    "missing_command_scope": {
+      "message": "Der Tesla-Autorisierung von {name} fehlt der Scope {scope}: Schließe die erneute Authentifizierung unter Einstellungen → Geräte & Dienste ab."
+    },
+    "multiple_entries": {
+      "message": "Es sind mehrere Tesla-Fleet-Telemetry-Einträge eingerichtet — gib `entry_id` an, um einen auszuwählen."
+    },
+    "no_entries": {
+      "message": "Es sind keine Tesla-Fleet-Telemetry-Einträge eingerichtet."
+    },
+    "no_private_key": {
+      "message": "Für diesen Konfigurationseintrag ist kein privater Partner-Schlüssel hinterlegt."
+    },
+    "signed_commands_required": {
+      "message": "Dieses Fahrzeug akzeptiert nur signierte Befehle (Tesla Vehicle Command Protocol), die diese Integration nicht implementiert."
+    },
+    "vehicle_asleep": {
+      "message": "Das Fahrzeug schläft oder ist offline (Tesla 408) — wecke es und versuche es erneut."
+    }
+  },
+  "selector": {
+    "interval_preset": {
+      "options": {
+        "default": "Standard",
+        "high_rate": "Hohe Rate"
+      }
+    },
+    "nav_order": {
+      "options": {
+        "0": "Fahrzeug entscheiden lassen",
+        "1": "Aktuelle Fahrt ersetzen",
+        "2": "Nächster Stopp",
+        "3": "Letzter Stopp"
+      }
+    },
+    "region": {
+      "options": {
+        "na": "Nordamerika",
+        "eu": "Europa"
+      }
+    }
+  },
+  "services": {
+    "bootstrap": {
+      "name": "Bootstrap (einmalige Einrichtung)",
+      "description": "Registriert die Partner-Domain bei Tesla (falls angefordert) und überträgt die anfängliche Telemetriekonfiguration, damit das eingerichtete Fahrzeug mit dem Streamen beginnt. Einmal nach der Erstinstallation ausführen — danach `resync_telemetry_config` verwenden, um das Feld `exp` der Konfiguration zu erneuern.",
+      "fields": {
+        "entry_id": {
+          "name": "Konfigurationseintrag",
+          "description": "Welcher Tesla-Fleet-Telemetry-Eintrag bearbeitet werden soll. Nur nötig, wenn mehr als einer eingerichtet ist."
+        },
+        "register_partner_domain": {
+          "name": "Partner-Domain registrieren",
+          "description": "Auf false setzen, wenn die Partner-App bereits über eine andere Integration registriert ist und du nur die Telemetriekonfiguration übertragen möchtest."
+        },
+        "ca_pem": {
+          "name": "CA-Bundle-Überschreibung (PEM)",
+          "description": "Ersetzt das standardmäßige Let's-Encrypt-Root-Bundle, dem das Fahrzeug vertraut. Nur setzen, wenn dein Hostname eine andere CA verwendet."
+        }
+      }
+    },
+    "resync_telemetry_config": {
+      "name": "Telemetriekonfiguration erneut übertragen",
+      "description": "Überträgt die aktuelle `fleet_telemetry_config` erneut. Das Feld `exp` der Konfiguration gilt etwa 30 Tage; rufe diesen Dienst wöchentlich per Automatisierung auf, damit nichts verfällt.",
+      "fields": {
+        "entry_id": {
+          "name": "Konfigurationseintrag",
+          "description": "Welcher Tesla-Fleet-Telemetry-Eintrag bearbeitet werden soll. Nur nötig, wenn mehr als einer eingerichtet ist."
+        },
+        "ca_pem": {
+          "name": "CA-Bundle-Überschreibung (PEM)",
+          "description": "Ersetzt das standardmäßige Let's-Encrypt-Root-Bundle, dem das Fahrzeug vertraut. Nur setzen, wenn dein Hostname eine andere CA verwendet."
+        }
+      }
+    },
+    "get_telemetry_config": {
+      "name": "Aktuelle Telemetriekonfiguration anzeigen",
+      "description": "Ruft Teslas Endpunkt `fleet_telemetry_config` auf und gibt die Antwort zurück. Damit kannst du prüfen, ob das Fahrzeug die übertragene Konfiguration tatsächlich übernommen hat — achte auf `synced: true` in der Antwort.",
+      "fields": {
+        "entry_id": {
+          "name": "Konfigurationseintrag",
+          "description": "Welcher Tesla-Fleet-Telemetry-Eintrag bearbeitet werden soll. Nur nötig, wenn mehr als einer eingerichtet ist."
+        }
+      }
+    },
+    "dump_public_key": {
+      "name": "Öffentlichen Partner-Schlüssel anzeigen",
+      "description": "Gibt den EC-P-256-Schlüssel zurück, der sich aus dem hinterlegten privaten Schlüssel ergibt — bereit zur Bereitstellung unter `.well-known/appspecific/com.tesla.3p.public-key.pem` der Partner-Domain. Wird als Antwort des Dienstes zurückgegeben und zusätzlich ins Protokoll geschrieben.",
+      "fields": {
+        "entry_id": {
+          "name": "Konfigurationseintrag",
+          "description": "Welcher Tesla-Fleet-Telemetry-Eintrag bearbeitet werden soll. Nur nötig, wenn mehr als einer eingerichtet ist."
+        }
+      }
+    },
+    "set_interval_preset": {
+      "name": "Telemetrie-Intervall-Preset setzen",
+      "description": "Stellt die Intervalle der einzelnen Felder auf ein benanntes Preset um und überträgt die Telemetriekonfiguration erneut, damit die Änderung wirksam wird. `default` ist die Konfiguration im Dauerbetrieb — eine Obergrenze von 5 s für Standort und Geschwindigkeit, höhere Obergrenzen für langsamer wechselnde Signale, wobei Tesla weiterhin bei Änderung sendet. `high_rate` senkt `Location` und `VehicleSpeed` auf etwa 1 s für Live-Aufzeichnungen; alle anderen Signale behalten ihr Intervall, daher anschließend wieder auf `default` zurückstellen. Das Preset wird im Eintrag gespeichert und übersteht einen Neustart.",
+      "fields": {
+        "entry_id": {
+          "name": "Konfigurationseintrag",
+          "description": "Welcher Tesla-Fleet-Telemetry-Eintrag bearbeitet werden soll. Nur nötig, wenn mehr als einer eingerichtet ist."
+        },
+        "preset": {
+          "name": "Preset",
+          "description": "Welches Intervall-Preset angewendet werden soll."
+        },
+        "ca_pem": {
+          "name": "CA-Bundle-Überschreibung (PEM)",
+          "description": "Ersetzt das standardmäßige Let's-Encrypt-Root-Bundle, dem das Fahrzeug vertraut. Nur setzen, wenn dein Hostname eine andere CA verwendet."
+        }
+      }
+    },
+    "navigate": {
+      "name": "Ziel an das Fahrzeug senden",
+      "description": "Sendet ein Ziel an die Navigation des Fahrzeugs — entweder als Freitext, den das Fahrzeug selbst auflöst, genau wie beim Teilen eines Standorts aus der Tesla-App, oder als Koordinaten. Gib entweder das eine oder das andere an. Aus, solange die Option „Fahrzeugbefehle erlauben“ der Integration nicht aktiv ist; außerdem wird ein waches Fahrzeug benötigt, das unsignierte Fleet-API-Befehle akzeptiert (Model S/X vor Baujahr 2021).",
+      "fields": {
+        "entry_id": {
+          "name": "Konfigurationseintrag",
+          "description": "Welcher Tesla-Fleet-Telemetry-Eintrag bearbeitet werden soll. Nur nötig, wenn mehr als einer eingerichtet ist."
+        },
+        "destination": {
+          "name": "Ziel",
+          "description": "Eine Adresse, ein Ortsname oder „Ort, Stadt“. Leer lassen, wenn Koordinaten gesendet werden."
+        },
+        "latitude": {
+          "name": "Breitengrad",
+          "description": "Zusammen mit dem Längengrad statt eines Freitextziels verwenden."
+        },
+        "longitude": {
+          "name": "Längengrad",
+          "description": "Zusammen mit dem Breitengrad statt eines Freitextziels verwenden."
+        },
+        "order": {
+          "name": "Reihenfolge der Fahrt",
+          "description": "Nur bei Koordinaten. Lässt das Fahrzeug entscheiden, ersetzt die aktuelle Fahrt oder fügt das Ziel als nächsten bzw. letzten Stopp hinzu."
+        },
+        "locale": {
+          "name": "Sprache",
+          "description": "Nur bei Freitextzielen: die Sprache, in der das Fahrzeug den Text liest, als BCP-47-Tag."
+        }
+      }
+    }
+  }
+}

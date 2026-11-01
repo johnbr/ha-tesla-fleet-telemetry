@@ -18,7 +18,6 @@ import logging
 from typing import Any
 
 from homeassistant.components.device_tracker import SourceType, TrackerEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_HOME, STATE_NOT_HOME
 from homeassistant.core import HomeAssistant, State, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -26,7 +25,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
-    DOMAIN,
     SIGNAL_DESTINATION_LOCATION,
     SIGNAL_DESTINATION_NAME,
     SIGNAL_GPS_HEADING,
@@ -37,6 +35,7 @@ from .coordinator import (
     TeslaTelemetryCoordinator,
     signal_dispatcher_topic,
 )
+from .models import TeslaTelemetryConfigEntry
 from .values import value_as_float
 
 _LOGGER = logging.getLogger(__name__)
@@ -44,12 +43,10 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: TeslaTelemetryConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    coordinator: TeslaTelemetryCoordinator = hass.data[DOMAIN][entry.entry_id][
-        "coordinator"
-    ]
+    coordinator: TeslaTelemetryCoordinator = entry.runtime_data.coordinator
     async_add_entities(
         [
             LocationTracker(coordinator),
@@ -113,7 +110,7 @@ class _BaseTelemetryTracker(TrackerEntity, RestoreEntity):
 
 
 class LocationTracker(_BaseTelemetryTracker):
-    _attr_name = "Location"
+    _attr_translation_key = "location"
 
     def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:
         super().__init__(coordinator)
@@ -164,7 +161,7 @@ class LocationTracker(_BaseTelemetryTracker):
 
 
 class RouteTracker(_BaseTelemetryTracker):
-    _attr_name = "Route"
+    _attr_translation_key = "route"
 
     def __init__(self, coordinator: TeslaTelemetryCoordinator) -> None:
         super().__init__(coordinator)

@@ -5,16 +5,20 @@
 * The ``set_interval_preset`` description must name exactly the signals the
   ``high_rate`` preset overrides, so the UI can't promise more than it does.
 
-``const.py`` is stdlib only and loaded by path, as in the other tests; PyYAML
-isn't a test dependency, so ``services.yaml`` is read as text.
+``const.py`` is stdlib only and loaded by path, as in the other tests. Service
+descriptions live in ``strings.json`` and its translations, so the high-rate
+guard reads every shipped language as JSON.
 """
 from __future__ import annotations
 
 import importlib.util
+import json
 import re
 import sys
 from pathlib import Path
 from types import ModuleType
+
+import pytest
 
 _PKG = "tesla_telemetry_isolated"
 _DIR = (
@@ -56,22 +60,37 @@ def test_proto_readme_attributes_upstream() -> None:
     assert "[`LICENSE`](LICENSE)" in readme
 
 
-def _high_rate_paragraph() -> str:
-    text = (_DIR / "services.yaml").read_text(encoding="utf-8")
-    match = re.search(r"`high_rate`(.*?)\n\s*\n", text, re.DOTALL)
-    assert match, "set_interval_preset description lost its high_rate paragraph"
+def _description_files() -> list[Path]:
+    """``strings.json`` plus every shipped translation.
+
+    The high_rate paragraph is translated too, so a guard that only reads the
+    English source would let the translations drift away from what the preset
+    actually does.
+    """
+    return [_DIR / "strings.json", *sorted((_DIR / "translations").glob("*.json"))]
+
+
+def _high_rate_paragraph(path: Path) -> str:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    description = data["services"]["set_interval_preset"]["description"]
+    match = re.search(r"`high_rate`(.*)", description, re.DOTALL)
+    assert match, f"{path.name}: lost its high_rate paragraph"
     return match.group(1)
 
 
-def test_high_rate_description_names_every_overridden_signal() -> None:
-    paragraph = _high_rate_paragraph()
+@pytest.mark.parametrize("path", _description_files(), ids=lambda p: p.name)
+def test_high_rate_description_names_every_overridden_signal(path: Path) -> None:
+    paragraph = _high_rate_paragraph(path)
     overridden = const.INTERVAL_PRESET_OVERRIDES[const.INTERVAL_PRESET_HIGH_RATE]
     for signal in overridden:
-        assert signal in paragraph, f"{signal} missing from the high_rate text"
+        assert signal in paragraph, (
+            f"{path.name}: {signal} missing from the high_rate text"
+        )
 
 
-def test_high_rate_description_names_no_other_signal() -> None:
-    paragraph = _high_rate_paragraph()
+@pytest.mark.parametrize("path", _description_files(), ids=lambda p: p.name)
+def test_high_rate_description_names_no_other_signal(path: Path) -> None:
+    paragraph = _high_rate_paragraph(path)
     overridden = set(
         const.INTERVAL_PRESET_OVERRIDES[const.INTERVAL_PRESET_HIGH_RATE]
     )
@@ -79,5 +98,6 @@ def test_high_rate_description_names_no_other_signal() -> None:
         if signal in overridden:
             continue
         assert not re.search(rf"\b{re.escape(signal)}\b", paragraph), (
-            f"high_rate text mentions {signal}, which the preset leaves alone"
+            f"{path.name}: high_rate text mentions {signal}, which the preset "
+            "leaves alone"
         )

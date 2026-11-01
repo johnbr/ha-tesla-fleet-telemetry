@@ -1,153 +1,88 @@
 ---
+# Service names, descriptions and field labels live in strings.json so they
+# are translatable; this file carries only the schema Home Assistant needs to
+# render the action form (required-ness, examples, selectors).
 bootstrap:
-  name: Bootstrap (one-time onboarding)
-  description: >
-    Registers the partner domain with Tesla (if requested) and pushes the
-    initial fleet telemetry config so the configured vehicle starts
-    streaming. Run once after first install — afterwards, use
-    `resync_telemetry_config` to refresh the config's `exp` field.
   fields:
     entry_id:
-      name: Config entry
-      description: Which tesla_telemetry entry to act on. Required only when more than one is configured.
       required: false
       selector:
         config_entry:
           integration: tesla_telemetry
     register_partner_domain:
-      name: Register partner domain
-      description: >
-        Set to false if the partner app is already registered through
-        another integration (e.g. tesla_fleet) and you only need to push
-        the telemetry config.
       required: false
       default: true
       selector:
         boolean:
     ca_pem:
-      name: CA bundle override (PEM)
-      description: >
-        Override the default Let's Encrypt root bundle used as the
-        vehicle's TLS trust anchor. Only set this if your hostname uses
-        a non-LE CA.
       required: false
       selector:
         text:
           multiline: true
 
 resync_telemetry_config:
-  name: Re-push telemetry config
-  description: >
-    Pushes the current `fleet_telemetry_config` again. The config's `exp`
-    field is ~30 days; call this weekly via an HA automation so nothing
-    lapses.
   fields:
     entry_id:
-      name: Config entry
       required: false
       selector:
         config_entry:
           integration: tesla_telemetry
     ca_pem:
-      name: CA bundle override (PEM)
       required: false
       selector:
         text:
           multiline: true
 
 get_telemetry_config:
-  name: Show current telemetry config
-  description: >
-    Calls Tesla's `GET /api/1/vehicles/{vin}/fleet_telemetry_config` and
-    returns the response. Use this to check whether the vehicle has
-    actually synced the config you pushed via `bootstrap`/`resync` —
-    look for `synced: true` in the response.
   fields:
     entry_id:
-      name: Config entry
       required: false
       selector:
         config_entry:
           integration: tesla_telemetry
 
 dump_public_key:
-  name: Show partner public key
-  description: >
-    Returns the EC P-256 public key derived from the configured private
-    key, ready to host at the partner domain's
-    `.well-known/appspecific/com.tesla.3p.public-key.pem` path. Returned
-    via the service response and also written to the HA log.
   fields:
     entry_id:
-      name: Config entry
       required: false
       selector:
         config_entry:
           integration: tesla_telemetry
 
 set_interval_preset:
-  name: Set telemetry interval preset
-  description: >
-    Switch the per-field telemetry intervals to a named preset and re-push
-    the fleet_telemetry_config so the change takes effect.
-
-    `default` is the steady-state config (5 s ceiling on Location/speed,
-    higher ceilings on slower-moving signals — Tesla still pushes on
-    change, the interval is just the maximum frequency).
-
-    `high_rate` drops Location and VehicleSpeed to ~1 s for live-trace
-    style use; every other signal keeps its configured interval.  Switch back to
-    `default` afterwards — the preset is persisted to entry storage so it
-    survives a HA restart.
   fields:
     entry_id:
-      name: Config entry
       required: false
       selector:
         config_entry:
           integration: tesla_telemetry
     preset:
-      name: Preset
       required: true
       selector:
         select:
+          translation_key: interval_preset
           options:
             - default
             - high_rate
     ca_pem:
-      name: CA bundle override (PEM)
       required: false
       selector:
         text:
           multiline: true
 
 navigate:
-  name: Send a destination to the car
-  description: >
-    Sends a destination to the vehicle's navigation — either free text, which
-    the car looks up itself exactly as when a location is shared from the
-    Tesla phone app, or coordinates. Give one or the other. Off unless the
-    integration's "Allow vehicle commands" option is on; also needs an awake
-    car that accepts unsigned Fleet API commands (pre-2021 Model S/X).
   fields:
     entry_id:
-      name: Config entry
       required: false
       selector:
         config_entry:
           integration: tesla_telemetry
     destination:
-      name: Destination
-      description: >
-        An address, a place name, or "place, city". Leave empty when sending
-        coordinates.
       required: false
       example: "1 Tesla Road, Austin, TX"
       selector:
         text:
     latitude:
-      name: Latitude
-      description: Use with longitude instead of a text destination.
       required: false
       selector:
         number:
@@ -156,7 +91,6 @@ navigate:
           step: any
           mode: box
     longitude:
-      name: Longitude
       required: false
       selector:
         number:
@@ -165,28 +99,17 @@ navigate:
           step: any
           mode: box
     order:
-      name: Trip order
-      description: >
-        Coordinates only. 0 lets the car decide, 1 replaces the current trip,
-        2 adds the destination as the next stop, 3 adds it as the last stop.
       required: false
       default: 0
       selector:
         select:
+          translation_key: nav_order
           options:
-            - label: Car decides
-              value: "0"
-            - label: Replace the trip
-              value: "1"
-            - label: Next stop
-              value: "2"
-            - label: Last stop
-              value: "3"
+            - "0"
+            - "1"
+            - "2"
+            - "3"
     locale:
-      name: Locale
-      description: >
-        Text destinations only: the locale the car reads the text in, as a
-        BCP 47 tag.
       required: false
       default: en-US
       example: de-DE
