@@ -334,8 +334,8 @@ TESLA_WSS_HOST: ws://192.168.1.10:8081
 ```
 
 `proxy_pass` omits the port because Home Assistant listens on **80** by
-default — since 2026.8 on Home Assistant OS. Home Assistant Container still
-defaults to **8123**, so use `http://127.0.0.1:8123/...` there.
+default — since 2026.8 on Home Assistant OS. Container and Core installs still
+default to **8123**, so use `http://127.0.0.1:8123/...` there.
 
 TeslaMate names the vehicle it wants by Tesla's numeric id, not the VIN, unless
 `TESLA_WSS_USE_VIN` is set. The integration records that id when the bridge is

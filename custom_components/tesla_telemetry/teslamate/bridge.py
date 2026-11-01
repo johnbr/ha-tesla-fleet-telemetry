@@ -92,8 +92,15 @@ class TeslaMateStreamHub:
         )
 
     def unregister(self, client: _Client) -> None:
-        self._clients[client.vin].discard(client)
-        if not self._clients[client.vin]:
+        clients = self._clients.get(client.vin)
+        # close_vin removes the client itself, and the view unregisters again
+        # from its finally block once the socket closes. The second call has
+        # nothing left to do — without this it also logged a second
+        # "disconnected" for the same connection.
+        if clients is None or client not in clients:
+            return
+        clients.discard(client)
+        if not clients:
             del self._clients[client.vin]
         for task in (client.writer, client.heartbeat):
             if task is not None:
@@ -251,7 +258,10 @@ class TeslaTelemetryStreamView(HomeAssistantView):
 
         tag = str(frame.get("tag") or "")
         vin = self._vins_by_vehicle_id.get(tag, tag)
-        if vin not in allowed:
+        # ``allowed`` is the set the connection was accepted with; the entry
+        # can unload between the upgrade and this message, so the switch is
+        # re-read here rather than trusting that snapshot.
+        if vin not in allowed or vin not in self._enabled:
             _LOGGER.warning(
                 "tesla_telemetry: teslamate asked for unknown vehicle tag=%s",
                 tag[:64].replace("\r", "").replace("\n", ""),
