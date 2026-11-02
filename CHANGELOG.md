@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.12.1...v0.13.0) (2026-11-02)
+
+
+### Features
+
+* adopt Home Assistant core conventions and add translations ([#52](https://github.com/johnbr/ha-tesla-fleet-telemetry/issues/52)) ([494eec4](https://github.com/johnbr/ha-tesla-fleet-telemetry/commit/494eec4072699f2f61d8a50cb51e8a0e2a6c62a0))
+
 ## [0.12.1](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.12.0...v0.12.1) (2026-11-01)
 
 
