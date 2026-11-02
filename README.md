@@ -98,7 +98,10 @@ Entity IDs follow the vehicle's name, e.g. `sensor.<vehicle>_speed`,
 
 ## Requirements
 
-* Home Assistant **2024.12** or later.
+* Home Assistant **2026.9** or later. The config and options forms use
+  `probatio`, the validation engine Home Assistant Core switched to in 2026.9
+  ([background](https://contributors.home-assistant.io/blog/2026/09/30/probatio-validation-engine/));
+  older releases expect `voluptuous` schemas and cannot render these forms.
 * A **Tesla developer account** with a registered *partner application*
   ([developer.tesla.com](https://developer.tesla.com/)). North America and
   Europe are supported — pick the region at the start of the config flow.

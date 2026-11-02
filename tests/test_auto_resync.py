@@ -75,12 +75,19 @@ def _cv_module() -> ModuleType:
 
 def _stubs() -> dict[str, ModuleType]:
     """The Home Assistant and aiohttp names ``services.py`` imports."""
-    error = type("HomeAssistantError", (Exception,), {})
+    class error(Exception):  # stands in for HomeAssistantError
+        """Accepts the ``translation_domain``/``translation_key`` keywords."""
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args)
+            self.kwargs = kwargs
+
     return {
         "aiohttp": _module("aiohttp"),
         "homeassistant": _module("homeassistant"),
         "homeassistant.config_entries": _module(
-            "homeassistant.config_entries", ConfigEntry=type("ConfigEntry", (), {})
+            "homeassistant.config_entries",
+            ConfigEntry=type("ConfigEntry", (), {}),
         ),
         "homeassistant.const": _module(
             "homeassistant.const", ATTR_LATITUDE="latitude", ATTR_LONGITUDE="longitude"
@@ -187,7 +194,7 @@ def run(
 ) -> Hass:
     """Run one check against ``entry`` with ``api`` standing in for Tesla."""
     hass = Hass(entry)
-    monkeypatch.setattr(services, "_entry_api", lambda _hass, _entry: api)
+    monkeypatch.setattr(services, "_entry_api", lambda _entry: api)
     monkeypatch.setattr(
         services, "_build_telemetry_config", lambda _entry, _ca: {"sent": True}
     )
@@ -272,7 +279,7 @@ class TestAdoptingAnInheritedConfig:
         """The answer decides the renewal, so it is not cached."""
         entry, api = Entry(), FakeApi(config_for("someone-else.example.com"))
         hass = Hass(entry)
-        monkeypatch.setattr(services, "_entry_api", lambda _hass, _entry: api)
+        monkeypatch.setattr(services, "_entry_api", lambda _entry: api)
         monkeypatch.setattr(
             services, "_build_telemetry_config", lambda _entry, _ca: {"sent": True}
         )
@@ -280,6 +287,53 @@ class TestAdoptingAnInheritedConfig:
             asyncio.run(services._auto_resync_if_due(hass, entry))
 
         assert api.get_calls == 3
+
+
+class TestFirstCheckDuringSetup:
+    """The check that runs as soon as the entry is set up.
+
+    ``async_at_started`` fires immediately when Home Assistant is already
+    running — a reload, a newly added entry, or toggling the TeslaMate bridge,
+    which itself calls ``async_reload``. It runs its callback as an *eager*
+    task, so the first check happens synchronously inside
+    ``async_setup_entry``, before core flips the entry to ``LOADED``. Gating
+    the runtime data on that state made this check skip and wait a full day
+    for its interval, which is exactly the case it exists for.
+    """
+
+    def test_the_check_uses_runtime_data_assigned_mid_setup(
+        self, services: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        entry = Entry()
+        api = FakeApi(config_for(exp=int(time.time()) - DAY))
+        hass = Hass(entry)
+        # What async_setup_entry looks like from inside the eager callback:
+        # runtime data assigned, state not yet LOADED.
+        entry.state = "setup_in_progress"
+        entry.runtime_data = SimpleNamespace(api=api)
+        monkeypatch.setattr(
+            services, "_build_telemetry_config", lambda _entry, _ca: {"sent": True}
+        )
+
+        asyncio.run(services._auto_resync_if_due(hass, entry))
+
+        assert api.get_calls == 1, "the check skipped instead of reading the car"
+        assert api.pushed, "an expired config was not renewed"
+
+    def test_an_entry_without_runtime_data_still_skips(
+        self, services: Any, monkeypatch: pytest.MonkeyPatch, caplog
+    ) -> None:
+        """The guard still has to hold before setup has run at all."""
+        entry = Entry()
+        api = FakeApi(config_for())
+        hass = Hass(entry)
+
+        with caplog.at_level(logging.WARNING, logger=services.__name__):
+            asyncio.run(services._auto_resync_if_due(hass, entry))
+
+        assert api.get_calls == 0
+        assert api.pushed == []
+        assert "auto-resync skipped" in caplog.text
 
 
 class TestRenewingByExpiry:

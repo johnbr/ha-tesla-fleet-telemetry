@@ -1,0 +1,459 @@
+{
+  "config": {
+    "step": {
+      "pick_implementation": {
+        "title": "Välj autentiseringsuppgifter för Teslas utvecklarapp",
+        "description": "Välj befintliga autentiseringsuppgifter för appen eller lägg till nya. Använd samma client_id och client_secret som du registrerade för `tesla_fleet` — varje integration går igenom OAuth separat och får sin egen uppdateringstoken, så de slutar ogiltigförklara varandras tokens."
+      },
+      "auth": {
+        "title": "Auktorisera mot Tesla"
+      },
+      "region": {
+        "title": "Region",
+        "description": "Tesla levererar Fleet API-konton från regionala slutpunkter. Den region som identifierats från ditt Tesla-konto är förvald — bekräfta den eller rätta den vid behov.",
+        "data": {
+          "region": "Region"
+        }
+      },
+      "vehicle": {
+        "title": "Välj fordon",
+        "description": "Välj det VIN som integrationen ska följa.",
+        "data": {
+          "vin": "Fordon"
+        }
+      },
+      "endpoint": {
+        "title": "Telemetrislutpunkt",
+        "description": "Ange hur Tesla når Home Assistant. Värdnamnet måste vara publikt upplösbart och presentera ett TLS-certifikat som är giltigt för den kedja du anger i `fleet_telemetry_config.ca`. Proxyhemligheten är det värde som nginx lägger till som `X-Tesla-Proxy-Secret` på varje vidarebefordrad begäran — kopiera in den i din nginx-konfiguration. Den måste vara minst {min_secret_length} tecken: den är det enda som autentiserar slutpunkten, som även nås via Home Assistants egen port.\n\nDen privata partnernyckeln är EC P-256-nyckeln (secp256r1) vars publika motpart publiceras på `https://din-partnerdomän/.well-known/appspecific/com.tesla.3p.public-key.pem`. Om du inte har någon än, generera en med `openssl ecparam -genkey -name prime256v1 -noout -out partner.key` och klistra in filens innehåll nedan.\n\nNär du lägger till ytterligare ett fordon förifylls dessa fält från din befintliga installation — lämna dem oförändrade om inte din uppsättning har flyttats.",
+        "data": {
+          "hostname": "Publikt värdnamn (t.ex. tesla-telemetry.example.com)",
+          "port": "Port",
+          "partner_domain": "Partnerdomän (där .well-known publiceras)",
+          "proxy_secret": "Delad proxyhemlighet",
+          "private_key_pem": "Privat partnernyckel (PEM)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Auktorisera mot Tesla igen",
+        "description": "{name} behöver en ny Tesla-auktorisering. Det inträffar när »Tillåt fordonskommandon« är på men den nuvarande auktoriseringen saknar behörigheten vehicle_cmds — om du fortsätter skickas du till Tesla för att bevilja den. Inget annat i posten ändras."
+      }
+    },
+    "error": {
+      "vin_not_found": "Det VIN-numret tillhör inte det här kontot.",
+      "bad_key": "Den privata nyckeln kunde inte läsas. Den måste vara en PEM-kodad privat nyckel.",
+      "wrong_curve": "Nyckeln måste vara EC P-256 (kurvan secp256r1).",
+      "weak_proxy_secret": "Proxyhemligheten måste vara minst {min_secret_length} tecken. Den är det enda som autentiserar telemetrislutpunkten, så behåll den genererade om du inte har en starkare."
+    },
+    "abort": {
+      "already_configured": "Det här fordonet är redan konfigurerat.",
+      "missing_credentials": "Inga autentiseringsuppgifter för appen är konfigurerade. Lägg till dem via Inställningar → Enheter och tjänster → Appautentiseringsuppgifter.",
+      "missing_configuration": "Autentiseringsuppgifterna för appen saknas. Lägg till dem och försök igen.",
+      "no_url_available": "Ingen URL tillgänglig för OAuth-återanropet. Konfigurera en extern URL eller my.home-assistant.io.",
+      "user_rejected_authorize": "Användaren avvisade auktoriseringsbegäran.",
+      "authorize_url_timeout": "Tidsgränsen överskreds när auktoriserings-URL:en skapades.",
+      "authorize_url_fail": "Auktoriserings-URL:en kunde inte skapas.",
+      "oauth_error": "Tesla returnerade ett OAuth-fel.",
+      "oauth_failed": "OAuth-flödet kunde inte slutföras.",
+      "oauth_timeout": "Tidsgränsen överskreds när OAuth-flödet slutfördes.",
+      "oauth_unauthorized": "Tesla avvisade OAuth-flödet — utvecklarappen är kanske inte godkänd för de begärda behörigheterna.",
+      "oauth_unknown_error": "Okänt OAuth-fel.",
+      "no_vehicles": "Tesla returnerade inga fordon för det här kontot.",
+      "cannot_connect": "Tesla kunde inte nås. Kontrollera nätverksanslutningen och försök igen.",
+      "reauth_successful": "Den nya auktoriseringen lyckades.",
+      "reauth_wrong_account": "Det här Tesla-kontot kan inte se postens fordon. Logga in med kontot som äger det."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Telemetrisignaler",
+        "description": "Ange vilka signaler fordonet sänder och hur ofta. Varje värde är det minsta antalet sekunder mellan två uppdateringar av signalen — Tesla sänder vid ändring och högst en gång per intervall, så det är ett tak för snabbt växlande signaler och inte en avfrågning. Sätt en signal till 0 för att stänga av den. När du sparar skickas konfigurationen till fordonet igen (ingen bootstrap behövs). Orörda värden behåller de inbyggda standardvärdena.",
+        "sections": {
+          "driving": {
+            "name": "Körning och navigering",
+            "description": "Position, hastighet, växel, aktiv rutt och sträcka i autonom körning. 0 stänger av en signal."
+          },
+          "battery": {
+            "name": "Batteri och räckvidd",
+            "description": "Laddningsnivå och räckviddsuppskattningar. 0 stänger av en signal."
+          },
+          "charging": {
+            "name": "Laddning",
+            "description": "Laddningsstatus, effekt och energi, kabel och laddningsgräns. 0 stänger av en signal."
+          },
+          "climate": {
+            "name": "Klimat och kupé",
+            "description": "Inne- och utetemperatur samt klimatsignaler. 0 stänger av en signal."
+          },
+          "body": {
+            "name": "Kaross och säkerhet",
+            "description": "Dörrar, fönster, lås och sittplatsbeläggning. 0 stänger av en signal."
+          },
+          "software": {
+            "name": "Programvaruuppdatering",
+            "description": "Uppdateringsversion samt nedladdnings- och installationsförlopp. 0 stänger av en signal."
+          },
+          "powertrain": {
+            "name": "Drivlina och temperatur",
+            "description": "Temperaturer för drivenheter och batterimoduler. 0 stänger av en signal."
+          },
+          "additional": {
+            "name": "Ytterligare signaler",
+            "description": "Signaler som du lagt till från den fullständiga katalogen. 0 tar bort en signal."
+          },
+          "add_signals": {
+            "name": "Lägg till signaler från Teslas fullständiga katalog",
+            "description": "Välj vilken signal som helst från Teslas fullständiga katalog för att börja sända den; den visas ovan med sitt eget intervall nästa gång du öppnar dialogen. Varje tillagd signal får också en sensor uppkallad efter sig (tal som mätvärde, övrigt som text); sätter du den till 0 tas både signalen och sensorn bort. Varje tillagd signal räknas i din signalfaktura. Alla fordon sänder inte alla signaler — äldre bilar rapporterar ibland aldrig vissa, och då förblir sensorn okänd.",
+            "data": {
+              "signals": "Signaler att lägga till"
+            }
+          },
+          "cost": {
+            "name": "Uppskattad signalkostnad",
+            "description": "Tesla fakturerar per sänd signal (en per datapunkt). Den här taxan styr bara sensorn »Uppskattad signalkostnad« — den ändrar inte vad Tesla debiterar. Standardvärdet (≈ 6,67 per miljon) motsvarar Teslas publicerade amerikanska taxa, ungefär 1 $ per 150 000 signaler.",
+            "data": {
+              "cost_per_million_signals": "Uppskattad kostnad per 1 000 000 signaler"
+            }
+          },
+          "vehicle_commands": {
+            "name": "Fordonskommandon",
+            "description": "Avstängt som standard: integrationen läser bara telemetri. Om du slår på det aktiveras tjänsten »Skicka en destination till fordonet« och, om den nuvarande auktoriseringen saknar behörigheten vehicle_cmds, startas en ny auktorisering som begär den från Tesla. Fungerar bara på fordon som accepterar osignerade Fleet API-kommandon (Model S/X före 2021).",
+            "data": {
+              "allow_vehicle_commands": "Tillåt fordonskommandon"
+            }
+          },
+          "teslamate": {
+            "name": "TeslaMate-brygga",
+            "description": "Avstängt som standard. Levererar fordonets direktsändning till TeslaMate i det strömningsprotokoll som dess TESLA_WSS_HOST förväntar sig, så att bilen bara sänder en gång och båda systemen läser den. Om du slår på det läggs en WebSocket-slutpunkt till på Home Assistants HTTP-server som inte använder Home Assistants inloggning; den skyddas av samma proxyhemlighet som fordonets slutpunkt redan använder, så håll den slutpunkten i ditt lokala nät. Gäller när posten laddas om.",
+            "data": {
+              "teslamate_bridge": "Leverera telemetriströmmen till TeslaMate"
+            }
+          }
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "vehicle_speed": {
+        "name": "Hastighet"
+      },
+      "gps_heading": {
+        "name": "Kurs"
+      },
+      "miles_to_arrival": {
+        "name": "Avstånd till ankomst"
+      },
+      "time_to_arrival": {
+        "name": "Tid till ankomst"
+      },
+      "gear": {
+        "name": "Växel"
+      },
+      "self_driving_miles": {
+        "name": "Sträcka i autonom körning"
+      },
+      "battery_level": {
+        "name": "Batterinivå"
+      },
+      "soc": {
+        "name": "Laddningsnivå"
+      },
+      "battery_range": {
+        "name": "Batteriräckvidd"
+      },
+      "rated_range": {
+        "name": "Typisk räckvidd"
+      },
+      "charging_state": {
+        "name": "Laddningsstatus"
+      },
+      "ac_charging_power": {
+        "name": "AC-laddningseffekt"
+      },
+      "dc_charging_power": {
+        "name": "DC-laddningseffekt"
+      },
+      "ac_charging_energy_in": {
+        "name": "Tillförd AC-energi"
+      },
+      "dc_charging_energy_in": {
+        "name": "Tillförd DC-energi"
+      },
+      "fast_charger_type": {
+        "name": "Typ av snabbladdare"
+      },
+      "charging_cable": {
+        "name": "Typ av laddkabel"
+      },
+      "charge_limit": {
+        "name": "Laddningsgräns"
+      },
+      "time_to_full_charge": {
+        "name": "Tid till full laddning"
+      },
+      "inside_temperature": {
+        "name": "Innetemperatur"
+      },
+      "outside_temperature": {
+        "name": "Utetemperatur"
+      },
+      "software_version": {
+        "name": "Programvaruversion"
+      },
+      "software_update_download": {
+        "name": "Nedladdning av uppdatering"
+      },
+      "software_update_install": {
+        "name": "Installation av uppdatering"
+      },
+      "motor_stator_temp_front": {
+        "name": "Stator temperatur främre motor"
+      },
+      "motor_stator_temp_rear": {
+        "name": "Stator temperatur bakre motor"
+      },
+      "battery_module_temp_max": {
+        "name": "Batteritemperatur (max)"
+      },
+      "battery_module_temp_min": {
+        "name": "Batteritemperatur (min)"
+      },
+      "battery_temp_avg": {
+        "name": "Batteritemperatur (medel)"
+      },
+      "signals_received": {
+        "name": "Mottagna signaler"
+      },
+      "estimated_signal_cost": {
+        "name": "Uppskattad signalkostnad"
+      }
+    },
+    "binary_sensor": {
+      "door_front_driver": {
+        "name": "Förardörr"
+      },
+      "door_front_passenger": {
+        "name": "Passagerardörr fram"
+      },
+      "door_rear_driver": {
+        "name": "Förardörr bak"
+      },
+      "door_rear_passenger": {
+        "name": "Passagerardörr bak"
+      },
+      "frunk": {
+        "name": "Frunk"
+      },
+      "trunk": {
+        "name": "Bagageutrymme"
+      },
+      "window_front_driver": {
+        "name": "Sidoruta vänster fram"
+      },
+      "window_front_passenger": {
+        "name": "Sidoruta höger fram"
+      },
+      "window_rear_driver": {
+        "name": "Sidoruta vänster bak"
+      },
+      "window_rear_passenger": {
+        "name": "Sidoruta höger bak"
+      },
+      "lock": {
+        "name": "Lås"
+      },
+      "charge_port_door": {
+        "name": "Laddlucka"
+      },
+      "charge_cable": {
+        "name": "Laddkabel"
+      },
+      "charging": {
+        "name": "Laddar"
+      },
+      "user_present": {
+        "name": "Användare närvarande"
+      }
+    },
+    "device_tracker": {
+      "location": {
+        "name": "Plats"
+      },
+      "route": {
+        "name": "Rutt"
+      }
+    }
+  },
+  "exceptions": {
+    "api_error": {
+      "message": "Tesla API-fel {status}: {message}"
+    },
+    "bad_private_key": {
+      "message": "Den privata partnernyckeln kunde inte läsas: {error}"
+    },
+    "cannot_connect": {
+      "message": "Tesla kunde inte nås: {error}"
+    },
+    "command_forbidden": {
+      "message": "Tesla avvisade kommandot (403) — kontrollera att utvecklarappen är godkänd för fordonskommandon. Tesla anger: {message}"
+    },
+    "command_refused": {
+      "message": "Fordonet avvisade destinationen: {reason}"
+    },
+    "commands_disabled": {
+      "message": "Fordonskommandon är avstängda för {name}: slå på »Tillåt fordonskommandon« i integrationens alternativ."
+    },
+    "entry_not_found": {
+      "message": "Okänd konfigurationspost för Tesla Fleet Telemetry: {entry_id}"
+    },
+    "entry_not_loaded": {
+      "message": "Konfigurationsposten {entry_id} är inte uppsatt — ladda om integrationen och försök igen."
+    },
+    "invalid_destination": {
+      "message": "Ogiltig destination: {error}"
+    },
+    "missing_command_scope": {
+      "message": "Tesla-auktoriseringen för {name} saknar behörigheten {scope}: slutför den nya auktoriseringen under Inställningar → Enheter och tjänster."
+    },
+    "multiple_entries": {
+      "message": "Flera poster för Tesla Fleet Telemetry är uppsatta — ange `entry_id` för att välja en."
+    },
+    "no_entries": {
+      "message": "Inga konfigurationsposter för Tesla Fleet Telemetry är uppsatta."
+    },
+    "no_private_key": {
+      "message": "Den här konfigurationsposten har ingen privat partnernyckel konfigurerad."
+    },
+    "signed_commands_required": {
+      "message": "Det här fordonet accepterar bara signerade kommandon (Tesla Vehicle Command Protocol), som den här integrationen inte implementerar."
+    },
+    "vehicle_asleep": {
+      "message": "Bilen sover eller är offline (Tesla 408) — väck den och försök igen."
+    }
+  },
+  "selector": {
+    "interval_preset": {
+      "options": {
+        "default": "Standard",
+        "high_rate": "Hög frekvens"
+      }
+    },
+    "nav_order": {
+      "options": {
+        "0": "Låt bilen avgöra",
+        "1": "Ersätt aktuell rutt",
+        "2": "Nästa stopp",
+        "3": "Sista stopp"
+      }
+    },
+    "region": {
+      "options": {
+        "na": "Nordamerika",
+        "eu": "Europa"
+      }
+    }
+  },
+  "services": {
+    "bootstrap": {
+      "name": "Bootstrap (engångsinstallation)",
+      "description": "Registrerar partnerdomänen hos Tesla (om det begärs) och skickar den inledande telemetrikonfigurationen så att det konfigurerade fordonet börjar sända. Kör en gång efter den första installationen — använd därefter `resync_telemetry_config` för att förnya konfigurationens `exp`-fält.",
+      "fields": {
+        "entry_id": {
+          "name": "Konfigurationspost",
+          "description": "Vilken Tesla Fleet Telemetry-post som ska användas. Behövs bara när fler än en är uppsatt."
+        },
+        "register_partner_domain": {
+          "name": "Registrera partnerdomän",
+          "description": "Sätt till false om partnerappen redan är registrerad via en annan integration och du bara behöver skicka telemetrikonfigurationen."
+        },
+        "ca_pem": {
+          "name": "Åsidosättning av CA-paket (PEM)",
+          "description": "Ersätter det förvalda Let's Encrypt-rotpaket som fordonet litar på. Ange bara om ditt värdnamn använder en annan CA."
+        }
+      }
+    },
+    "resync_telemetry_config": {
+      "name": "Skicka telemetrikonfigurationen igen",
+      "description": "Skickar den aktuella `fleet_telemetry_config` igen. Konfigurationens `exp`-fält gäller i ungefär 30 dagar; anropa tjänsten varje vecka via en automatisering så att inget löper ut.",
+      "fields": {
+        "entry_id": {
+          "name": "Konfigurationspost",
+          "description": "Vilken Tesla Fleet Telemetry-post som ska användas. Behövs bara när fler än en är uppsatt."
+        },
+        "ca_pem": {
+          "name": "Åsidosättning av CA-paket (PEM)",
+          "description": "Ersätter det förvalda Let's Encrypt-rotpaket som fordonet litar på. Ange bara om ditt värdnamn använder en annan CA."
+        }
+      }
+    },
+    "get_telemetry_config": {
+      "name": "Visa aktuell telemetrikonfiguration",
+      "description": "Anropar Teslas `fleet_telemetry_config`-slutpunkt och returnerar svaret. Använd den för att kontrollera om fordonet verkligen har tagit över den skickade konfigurationen — leta efter `synced: true` i svaret.",
+      "fields": {
+        "entry_id": {
+          "name": "Konfigurationspost",
+          "description": "Vilken Tesla Fleet Telemetry-post som ska användas. Behövs bara när fler än en är uppsatt."
+        }
+      }
+    },
+    "dump_public_key": {
+      "name": "Visa publik partnernyckel",
+      "description": "Returnerar den publika EC P-256-nyckeln som härleds från den konfigurerade privata nyckeln, färdig att publicera på partnerdomänens `.well-known/appspecific/com.tesla.3p.public-key.pem`. Returneras i tjänstens svar och skrivs även till loggen.",
+      "fields": {
+        "entry_id": {
+          "name": "Konfigurationspost",
+          "description": "Vilken Tesla Fleet Telemetry-post som ska användas. Behövs bara när fler än en är uppsatt."
+        }
+      }
+    },
+    "set_interval_preset": {
+      "name": "Ange förval för telemetriintervall",
+      "description": "Växlar fältens intervall till ett namngivet förval och skickar telemetrikonfigurationen igen så att ändringen börjar gälla. `default` är konfigurationen i normalläge — ett tak på 5 s för position och hastighet, högre tak för långsamt ändrade signaler, och Tesla sänder fortfarande vid ändring. `high_rate` sänker `Location` och `VehicleSpeed` till ungefär 1 s för användning som direktsänd spårning; övriga signaler behåller sitt intervall, så växla tillbaka till `default` efteråt. Förvalet sparas i posten och överlever en omstart.",
+      "fields": {
+        "entry_id": {
+          "name": "Konfigurationspost",
+          "description": "Vilken Tesla Fleet Telemetry-post som ska användas. Behövs bara när fler än en är uppsatt."
+        },
+        "preset": {
+          "name": "Förval",
+          "description": "Vilket intervallförval som ska användas."
+        },
+        "ca_pem": {
+          "name": "Åsidosättning av CA-paket (PEM)",
+          "description": "Ersätter det förvalda Let's Encrypt-rotpaket som fordonet litar på. Ange bara om ditt värdnamn använder en annan CA."
+        }
+      }
+    },
+    "navigate": {
+      "name": "Skicka en destination till fordonet",
+      "description": "Skickar en destination till fordonets navigering — antingen fritext, som bilen själv slår upp precis som när en plats delas från Tesla-appen, eller koordinater. Ange det ena eller det andra. Avstängt så länge integrationens alternativ »Tillåt fordonskommandon« inte är på; kräver dessutom en vaken bil som accepterar osignerade Fleet API-kommandon (Model S/X före 2021).",
+      "fields": {
+        "entry_id": {
+          "name": "Konfigurationspost",
+          "description": "Vilken Tesla Fleet Telemetry-post som ska användas. Behövs bara när fler än en är uppsatt."
+        },
+        "destination": {
+          "name": "Destination",
+          "description": "En adress, ett platsnamn eller »plats, stad«. Lämna tom när du skickar koordinater."
+        },
+        "latitude": {
+          "name": "Latitud",
+          "description": "Används tillsammans med longitud i stället för en textdestination."
+        },
+        "longitude": {
+          "name": "Longitud",
+          "description": "Används tillsammans med latitud i stället för en textdestination."
+        },
+        "order": {
+          "name": "Resordning",
+          "description": "Endast koordinater. Låter bilen avgöra, ersätter aktuell rutt eller lägger till destinationen som nästa eller sista stopp."
+        },
+        "locale": {
+          "name": "Språk",
+          "description": "Endast textdestinationer: språket bilen läser texten på, som BCP 47-tagg."
+        }
+      }
+    }
+  }
+}

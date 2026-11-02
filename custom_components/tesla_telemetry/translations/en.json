@@ -133,11 +133,326 @@
       }
     }
   },
+  "entity": {
+    "sensor": {
+      "vehicle_speed": {
+        "name": "Speed"
+      },
+      "gps_heading": {
+        "name": "Heading"
+      },
+      "miles_to_arrival": {
+        "name": "Distance to arrival"
+      },
+      "time_to_arrival": {
+        "name": "Time to arrival"
+      },
+      "gear": {
+        "name": "Gear"
+      },
+      "self_driving_miles": {
+        "name": "Self-driving distance"
+      },
+      "battery_level": {
+        "name": "Battery level"
+      },
+      "soc": {
+        "name": "State of charge"
+      },
+      "battery_range": {
+        "name": "Battery range"
+      },
+      "rated_range": {
+        "name": "Rated range"
+      },
+      "charging_state": {
+        "name": "Charging state"
+      },
+      "ac_charging_power": {
+        "name": "AC charging power"
+      },
+      "dc_charging_power": {
+        "name": "DC charging power"
+      },
+      "ac_charging_energy_in": {
+        "name": "AC charge energy added"
+      },
+      "dc_charging_energy_in": {
+        "name": "DC charge energy added"
+      },
+      "fast_charger_type": {
+        "name": "Fast charger type"
+      },
+      "charging_cable": {
+        "name": "Charging cable"
+      },
+      "charge_limit": {
+        "name": "Charge limit"
+      },
+      "time_to_full_charge": {
+        "name": "Time to full charge"
+      },
+      "inside_temperature": {
+        "name": "Inside temperature"
+      },
+      "outside_temperature": {
+        "name": "Outside temperature"
+      },
+      "software_version": {
+        "name": "Software version"
+      },
+      "software_update_download": {
+        "name": "Software update download"
+      },
+      "software_update_install": {
+        "name": "Software update install"
+      },
+      "motor_stator_temp_front": {
+        "name": "Front motor stator temperature"
+      },
+      "motor_stator_temp_rear": {
+        "name": "Rear motor stator temperature"
+      },
+      "battery_module_temp_max": {
+        "name": "Battery temperature (max)"
+      },
+      "battery_module_temp_min": {
+        "name": "Battery temperature (min)"
+      },
+      "battery_temp_avg": {
+        "name": "Battery temperature (avg)"
+      },
+      "signals_received": {
+        "name": "Signals received"
+      },
+      "estimated_signal_cost": {
+        "name": "Estimated signal cost"
+      }
+    },
+    "binary_sensor": {
+      "door_front_driver": {
+        "name": "Front driver door"
+      },
+      "door_front_passenger": {
+        "name": "Front passenger door"
+      },
+      "door_rear_driver": {
+        "name": "Rear driver door"
+      },
+      "door_rear_passenger": {
+        "name": "Rear passenger door"
+      },
+      "frunk": {
+        "name": "Frunk"
+      },
+      "trunk": {
+        "name": "Trunk"
+      },
+      "window_front_driver": {
+        "name": "Front driver window"
+      },
+      "window_front_passenger": {
+        "name": "Front passenger window"
+      },
+      "window_rear_driver": {
+        "name": "Rear driver window"
+      },
+      "window_rear_passenger": {
+        "name": "Rear passenger window"
+      },
+      "lock": {
+        "name": "Lock"
+      },
+      "charge_port_door": {
+        "name": "Charge port door"
+      },
+      "charge_cable": {
+        "name": "Charge cable"
+      },
+      "charging": {
+        "name": "Charging"
+      },
+      "user_present": {
+        "name": "User present"
+      }
+    },
+    "device_tracker": {
+      "location": {
+        "name": "Location"
+      },
+      "route": {
+        "name": "Route"
+      }
+    }
+  },
+  "exceptions": {
+    "api_error": {
+      "message": "Tesla API error {status}: {message}"
+    },
+    "bad_private_key": {
+      "message": "Could not parse the partner private key: {error}"
+    },
+    "cannot_connect": {
+      "message": "Could not reach Tesla: {error}"
+    },
+    "command_forbidden": {
+      "message": "Tesla refused the command (403) — check that the developer app is approved for vehicle commands. Tesla said: {message}"
+    },
+    "command_refused": {
+      "message": "The car refused the destination: {reason}"
+    },
+    "commands_disabled": {
+      "message": "Vehicle commands are off for {name}: turn on \"Allow vehicle commands\" in the integration's options."
+    },
+    "entry_not_found": {
+      "message": "Unknown Tesla Fleet Telemetry config entry: {entry_id}"
+    },
+    "entry_not_loaded": {
+      "message": "Config entry {entry_id} is not set up — reload the integration and try again."
+    },
+    "invalid_destination": {
+      "message": "Invalid destination: {error}"
+    },
+    "missing_command_scope": {
+      "message": "{name}'s Tesla authorization lacks the {scope} scope: finish the re-authentication under Settings → Devices & services."
+    },
+    "multiple_entries": {
+      "message": "Multiple Tesla Fleet Telemetry entries are set up — pass `entry_id` to choose one."
+    },
+    "no_entries": {
+      "message": "No Tesla Fleet Telemetry config entries are set up."
+    },
+    "no_private_key": {
+      "message": "This config entry has no partner private key configured."
+    },
+    "signed_commands_required": {
+      "message": "This vehicle only accepts signed commands (Tesla Vehicle Command Protocol), which this integration does not implement."
+    },
+    "vehicle_asleep": {
+      "message": "The car is asleep or offline (Tesla 408) — wake it and try again."
+    }
+  },
   "selector": {
+    "interval_preset": {
+      "options": {
+        "default": "Default",
+        "high_rate": "High rate"
+      }
+    },
+    "nav_order": {
+      "options": {
+        "0": "Let the car decide",
+        "1": "Replace the current trip",
+        "2": "Next stop",
+        "3": "Last stop"
+      }
+    },
     "region": {
       "options": {
         "na": "North America",
         "eu": "Europe"
+      }
+    }
+  },
+  "services": {
+    "bootstrap": {
+      "name": "Bootstrap (one-time onboarding)",
+      "description": "Registers the partner domain with Tesla (if requested) and pushes the initial fleet telemetry config so the configured vehicle starts streaming. Run once after first install — afterwards, use `resync_telemetry_config` to refresh the config's `exp` field.",
+      "fields": {
+        "entry_id": {
+          "name": "Config entry",
+          "description": "Which Tesla Fleet Telemetry entry to act on. Required only when more than one is configured."
+        },
+        "register_partner_domain": {
+          "name": "Register partner domain",
+          "description": "Set to false if the partner app is already registered through another integration and you only need to push the telemetry config."
+        },
+        "ca_pem": {
+          "name": "CA bundle override (PEM)",
+          "description": "Override the default Let's Encrypt root bundle used as the vehicle's TLS trust anchor. Only set this if your hostname uses a non-LE CA."
+        }
+      }
+    },
+    "resync_telemetry_config": {
+      "name": "Re-push telemetry config",
+      "description": "Pushes the current `fleet_telemetry_config` again. The config's `exp` field is about 30 days; call this weekly via an automation so nothing lapses.",
+      "fields": {
+        "entry_id": {
+          "name": "Config entry",
+          "description": "Which Tesla Fleet Telemetry entry to act on. Required only when more than one is configured."
+        },
+        "ca_pem": {
+          "name": "CA bundle override (PEM)",
+          "description": "Override the default Let's Encrypt root bundle used as the vehicle's TLS trust anchor. Only set this if your hostname uses a non-LE CA."
+        }
+      }
+    },
+    "get_telemetry_config": {
+      "name": "Show current telemetry config",
+      "description": "Calls Tesla's `fleet_telemetry_config` endpoint and returns the response. Use this to check whether the vehicle has actually synced the config you pushed — look for `synced: true` in the response.",
+      "fields": {
+        "entry_id": {
+          "name": "Config entry",
+          "description": "Which Tesla Fleet Telemetry entry to act on. Required only when more than one is configured."
+        }
+      }
+    },
+    "dump_public_key": {
+      "name": "Show partner public key",
+      "description": "Returns the EC P-256 public key derived from the configured private key, ready to host at the partner domain's `.well-known/appspecific/com.tesla.3p.public-key.pem` path. Returned via the action response and also written to the log.",
+      "fields": {
+        "entry_id": {
+          "name": "Config entry",
+          "description": "Which Tesla Fleet Telemetry entry to act on. Required only when more than one is configured."
+        }
+      }
+    },
+    "set_interval_preset": {
+      "name": "Set telemetry interval preset",
+      "description": "Switches the per-field telemetry intervals to a named preset and re-pushes the telemetry config so the change takes effect. `default` is the steady-state config — a 5 s ceiling on location and speed, higher ceilings on slower-moving signals, and Tesla still pushes on change. `high_rate` drops `Location` and `VehicleSpeed` to about 1 s for live-trace use; every other signal keeps its configured interval, so switch back to `default` afterwards. The preset is persisted to the entry so it survives a restart.",
+      "fields": {
+        "entry_id": {
+          "name": "Config entry",
+          "description": "Which Tesla Fleet Telemetry entry to act on. Required only when more than one is configured."
+        },
+        "preset": {
+          "name": "Preset",
+          "description": "Which interval preset to apply."
+        },
+        "ca_pem": {
+          "name": "CA bundle override (PEM)",
+          "description": "Override the default Let's Encrypt root bundle used as the vehicle's TLS trust anchor. Only set this if your hostname uses a non-LE CA."
+        }
+      }
+    },
+    "navigate": {
+      "name": "Send a destination to the car",
+      "description": "Sends a destination to the vehicle's navigation — either free text, which the car looks up itself exactly as when a location is shared from the Tesla phone app, or coordinates. Give one or the other. Off unless the integration's \"Allow vehicle commands\" option is on; also needs an awake car that accepts unsigned Fleet API commands (pre-2021 Model S/X).",
+      "fields": {
+        "entry_id": {
+          "name": "Config entry",
+          "description": "Which Tesla Fleet Telemetry entry to act on. Required only when more than one is configured."
+        },
+        "destination": {
+          "name": "Destination",
+          "description": "An address, a place name, or \"place, city\". Leave empty when sending coordinates."
+        },
+        "latitude": {
+          "name": "Latitude",
+          "description": "Use with longitude instead of a text destination."
+        },
+        "longitude": {
+          "name": "Longitude",
+          "description": "Use with latitude instead of a text destination."
+        },
+        "order": {
+          "name": "Trip order",
+          "description": "Coordinates only. Lets the car decide, replaces the current trip, or adds the destination as the next or last stop."
+        },
+        "locale": {
+          "name": "Locale",
+          "description": "Text destinations only: the locale the car reads the text in, as a BCP 47 tag."
+        }
       }
     }
   }
