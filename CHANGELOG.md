@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.13.0...v0.14.0) (2026-11-04)
+
+
+### Features
+
+* include GpsHeading in the high_rate interval preset ([#54](https://github.com/johnbr/ha-tesla-fleet-telemetry/issues/54)) ([97698f8](https://github.com/johnbr/ha-tesla-fleet-telemetry/commit/97698f8422da0031fb1d728ef19c6f0f8702ef9c))
+
 ## [0.13.0](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.12.1...v0.13.0) (2026-11-02)
 
 
