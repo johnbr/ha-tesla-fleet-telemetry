@@ -394,7 +394,7 @@ setup.
 | `tesla_telemetry.resync_telemetry_config` | Re-push the config. Runs automatically (the config's `exp` is ~30 days); rarely needed by hand. |
 | `tesla_telemetry.get_telemetry_config` | Fetch Tesla's current config for the VIN — check `synced`. |
 | `tesla_telemetry.dump_public_key` | Emit the partner public key PEM, ready to host at `.well-known`. |
-| `tesla_telemetry.set_interval_preset` | Switch streaming intervals between `default` and `high_rate` (~1 s location/speed). |
+| `tesla_telemetry.set_interval_preset` | Switch streaming intervals between `default` and `high_rate` (~1 s location/speed/heading). |
 | `tesla_telemetry.navigate` | Send a destination to the car's navigation: free text (`destination`) or `latitude`/`longitude`. Off until *Allow vehicle commands* is turned on in the options. |
 
 `navigate` is the integration's only write to the vehicle, and it is **off

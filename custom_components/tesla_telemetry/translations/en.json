@@ -409,7 +409,7 @@
     },
     "set_interval_preset": {
       "name": "Set telemetry interval preset",
-      "description": "Switches the per-field telemetry intervals to a named preset and re-pushes the telemetry config so the change takes effect. `default` is the steady-state config — a 5 s ceiling on location and speed, higher ceilings on slower-moving signals, and Tesla still pushes on change. `high_rate` drops `Location` and `VehicleSpeed` to about 1 s for live-trace use; every other signal keeps its configured interval, so switch back to `default` afterwards. The preset is persisted to the entry so it survives a restart.",
+      "description": "Switches the per-field telemetry intervals to a named preset and re-pushes the telemetry config so the change takes effect. `default` is the steady-state config — a 5 s ceiling on location, speed and heading, higher ceilings on slower-moving signals, and Tesla still pushes on change. `high_rate` drops `Location`, `VehicleSpeed` and `GpsHeading` to about 1 s for live-trace use; every other signal keeps its configured interval, so switch back to `default` afterwards. The preset is persisted to the entry so it survives a restart.",
       "fields": {
         "entry_id": {
           "name": "Config entry",

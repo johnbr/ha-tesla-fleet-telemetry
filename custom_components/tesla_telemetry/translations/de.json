@@ -409,7 +409,7 @@
     },
     "set_interval_preset": {
       "name": "Telemetrie-Intervall-Preset setzen",
-      "description": "Stellt die Intervalle der einzelnen Felder auf ein benanntes Preset um und überträgt die Telemetriekonfiguration erneut, damit die Änderung wirksam wird. `default` ist die Konfiguration im Dauerbetrieb — eine Obergrenze von 5 s für Standort und Geschwindigkeit, höhere Obergrenzen für langsamer wechselnde Signale, wobei Tesla weiterhin bei Änderung sendet. `high_rate` senkt `Location` und `VehicleSpeed` auf etwa 1 s für Live-Aufzeichnungen; alle anderen Signale behalten ihr Intervall, daher anschließend wieder auf `default` zurückstellen. Das Preset wird im Eintrag gespeichert und übersteht einen Neustart.",
+      "description": "Stellt die Intervalle der einzelnen Felder auf ein benanntes Preset um und überträgt die Telemetriekonfiguration erneut, damit die Änderung wirksam wird. `default` ist die Konfiguration im Dauerbetrieb — eine Obergrenze von 5 s für Standort, Geschwindigkeit und Fahrtrichtung, höhere Obergrenzen für langsamer wechselnde Signale, wobei Tesla weiterhin bei Änderung sendet. `high_rate` senkt `Location`, `VehicleSpeed` und `GpsHeading` auf etwa 1 s für Live-Aufzeichnungen; alle anderen Signale behalten ihr Intervall, daher anschließend wieder auf `default` zurückstellen. Das Preset wird im Eintrag gespeichert und übersteht einen Neustart.",
       "fields": {
         "entry_id": {
           "name": "Konfigurationseintrag",

@@ -409,7 +409,7 @@
     },
     "set_interval_preset": {
       "name": "Definir a predefinição de intervalo de telemetria",
-      "description": "Muda os intervalos dos vários campos para uma predefinição nomeada e reenvia a configuração de telemetria para que a mudança faça efeito. `default` é a configuração de regime permanente — um limite de 5 s para localização e velocidade, limites mais altos para sinais de variação lenta, com a Tesla ainda emitindo a cada mudança. `high_rate` baixa `Location` e `VehicleSpeed` para cerca de 1 s para uso de registro ao vivo; os demais sinais mantêm o próprio intervalo, então volte para `default` depois. A predefinição é salva na entrada e sobrevive a um reinício.",
+      "description": "Muda os intervalos dos vários campos para uma predefinição nomeada e reenvia a configuração de telemetria para que a mudança faça efeito. `default` é a configuração de regime permanente — um limite de 5 s para localização, velocidade e rumo, limites mais altos para sinais de variação lenta, com a Tesla ainda emitindo a cada mudança. `high_rate` baixa `Location`, `VehicleSpeed` e `GpsHeading` para cerca de 1 s para uso de registro ao vivo; os demais sinais mantêm o próprio intervalo, então volte para `default` depois. A predefinição é salva na entrada e sobrevive a um reinício.",
       "fields": {
         "entry_id": {
           "name": "Entrada de configuração",

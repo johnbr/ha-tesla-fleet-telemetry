@@ -409,7 +409,7 @@
     },
     "set_interval_preset": {
       "name": "Définir le préréglage d'intervalle de télémétrie",
-      "description": "Bascule les intervalles des différents champs vers un préréglage nommé et renvoie la configuration de télémétrie pour que le changement prenne effet. `default` est la configuration de régime permanent — un plafond de 5 s pour la position et la vitesse, des plafonds plus élevés pour les signaux à variation lente, Tesla émettant toujours lors d'un changement. `high_rate` abaisse `Location` et `VehicleSpeed` à environ 1 s pour un usage de type trace en direct ; tous les autres signaux conservent leur intervalle, revenez donc à `default` ensuite. Le préréglage est enregistré dans l'entrée et survit à un redémarrage.",
+      "description": "Bascule les intervalles des différents champs vers un préréglage nommé et renvoie la configuration de télémétrie pour que le changement prenne effet. `default` est la configuration de régime permanent — un plafond de 5 s pour la position, la vitesse et le cap, des plafonds plus élevés pour les signaux à variation lente, Tesla émettant toujours lors d'un changement. `high_rate` abaisse `Location`, `VehicleSpeed` et `GpsHeading` à environ 1 s pour un usage de type trace en direct ; tous les autres signaux conservent leur intervalle, revenez donc à `default` ensuite. Le préréglage est enregistré dans l'entrée et survit à un redémarrage.",
       "fields": {
         "entry_id": {
           "name": "Entrée de configuration",
