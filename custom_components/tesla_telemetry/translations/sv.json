@@ -409,7 +409,7 @@
     },
     "set_interval_preset": {
       "name": "Ange förval för telemetriintervall",
-      "description": "Växlar fältens intervall till ett namngivet förval och skickar telemetrikonfigurationen igen så att ändringen börjar gälla. `default` är konfigurationen i normalläge — ett tak på 5 s för position och hastighet, högre tak för långsamt ändrade signaler, och Tesla sänder fortfarande vid ändring. `high_rate` sänker `Location` och `VehicleSpeed` till ungefär 1 s för användning som direktsänd spårning; övriga signaler behåller sitt intervall, så växla tillbaka till `default` efteråt. Förvalet sparas i posten och överlever en omstart.",
+      "description": "Växlar fältens intervall till ett namngivet förval och skickar telemetrikonfigurationen igen så att ändringen börjar gälla. `default` är konfigurationen i normalläge — ett tak på 5 s för position, hastighet och kurs, högre tak för långsamt ändrade signaler, och Tesla sänder fortfarande vid ändring. `high_rate` sänker `Location`, `VehicleSpeed` och `GpsHeading` till ungefär 1 s för användning som direktsänd spårning; övriga signaler behåller sitt intervall, så växla tillbaka till `default` efteråt. Förvalet sparas i posten och överlever en omstart.",
       "fields": {
         "entry_id": {
           "name": "Konfigurationspost",

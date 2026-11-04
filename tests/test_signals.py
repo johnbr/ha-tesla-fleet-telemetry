@@ -89,6 +89,7 @@ def test_high_rate_preset_layers_on_top() -> None:
     result = signals.resolve_effective_intervals(entry)
     assert result["Location"] == 1
     assert result["VehicleSpeed"] == 1
+    assert result["GpsHeading"] == 1
 
 
 def test_bad_override_values_are_ignored() -> None:

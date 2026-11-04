@@ -235,9 +235,10 @@ DEFAULT_NEW_SIGNAL_INTERVAL = 60
 SIGNAL_INTERVAL_MIN = 1
 SIGNAL_INTERVAL_MAX = 86_400
 
-# Named interval presets.  ``high_rate`` rewrites Location/VehicleSpeed down to
-# 1s for live trace / driving log style use; all other signals (Gear, charging,
-# etc.) keep their default ceilings.  Apply via the
+# Named interval presets.  ``high_rate`` rewrites Location/VehicleSpeed/
+# GpsHeading down to 1s for live trace / driving log style use (heading moves
+# with them so the map marker turns as often as it moves); all other signals
+# (Gear, charging, etc.) keep their default ceilings.  Apply via the
 # ``set_interval_preset`` service; revert with the ``default`` preset (or just
 # wait for the next auto-resync, which always re-pushes defaults).
 INTERVAL_PRESET_DEFAULT = "default"
@@ -248,6 +249,7 @@ INTERVAL_PRESET_OVERRIDES: dict[str, dict[str, int]] = {
     INTERVAL_PRESET_HIGH_RATE: {
         SIGNAL_LOCATION: 1,
         SIGNAL_VEHICLE_SPEED: 1,
+        SIGNAL_GPS_HEADING: 1,
     },
 }
 
