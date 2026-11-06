@@ -257,6 +257,12 @@ values (location, doors, …) become a summary with each field as an attribute.
 The `value_type` attribute shows which kind arrived. Setting an added signal
 back to `0` removes its sensor.
 
+`RouteLine` is the exception. A route runs far past HA's 255-character state
+limit, so its sensor's state is the text's length and the text itself is in a
+`route_line` attribute the recorder skips. It's a base64 protobuf, not the plain
+polyline Tesla documents: field 1 is a precision 6 polyline and repeated field 2
+holds route lengths in km. Field 1 is absent once a route ends.
+
 Generic sensors have no unit. To add one, use HA's customize:
 
 ```yaml

@@ -21,6 +21,7 @@ SIGNAL_DESTINATION_NAME = "DestinationName"
 SIGNAL_DESTINATION_LOCATION = "DestinationLocation"
 SIGNAL_MILES_TO_ARRIVAL = "MilesToArrival"
 SIGNAL_MINUTES_TO_ARRIVAL = "MinutesToArrival"
+SIGNAL_ROUTE_LINE = "RouteLine"
 SIGNAL_SELF_DRIVING_MILES = "SelfDrivingMilesSinceReset"
 # ----- Battery / range -----
 SIGNAL_BATTERY_LEVEL = "BatteryLevel"
