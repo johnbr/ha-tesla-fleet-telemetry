@@ -63,6 +63,7 @@ from .const import (
     SIGNAL_MOTOR_STATOR_TEMP_REAR,
     SIGNAL_OUTSIDE_TEMP,
     SIGNAL_RATED_RANGE,
+    SIGNAL_ROUTE_LINE,
     SIGNAL_SELF_DRIVING_MILES,
     SIGNAL_SOC,
     SIGNAL_SOFTWARE_UPDATE_DOWNLOAD_PCT,
@@ -166,7 +167,7 @@ def _async_setup_generic_sensors(
     """
     registry = er.async_get(hass)
     generic: dict[str, GenericTelemetrySensor] = {
-        signal: GenericTelemetrySensor(coordinator, signal)
+        signal: _generic_sensor(coordinator, signal)
         for signal in generic_entity_signals(entry)
     }
 
@@ -194,7 +195,7 @@ def _async_setup_generic_sensors(
                 # Removing the registry entry also removes the live entity.
                 registry.async_remove(entity_id)
         added = [
-            GenericTelemetrySensor(coordinator, signal)
+            _generic_sensor(coordinator, signal)
             for signal in sorted(wanted - generic.keys())
         ]
         if added:
@@ -831,6 +832,46 @@ class GenericTelemetrySensor(_BaseTelemetrySensor):
         await super()._async_restore_last()
         if isinstance(self._attr_native_value, (int, float, Decimal)):
             self._attr_state_class = SensorStateClass.MEASUREMENT
+
+
+class RouteLineSensor(GenericTelemetrySensor):
+    """The active route's geometry, whole, as the car sends it.
+
+    ``RouteLine`` runs far past the 255-character state limit, and the generic
+    sensor would keep only its first 255 characters. The state is therefore
+    the text's length and the text itself sits in an attribute the recorder
+    skips, so a change is still recorded without storing the route.
+
+    A sensor of its own rather than an attribute on the Route tracker: a state
+    trigger with no ``to:`` also fires on attribute changes, so every new line
+    would wake whatever watches the destination.
+    """
+
+    _attr_icon = "mdi:map-marker-path"
+    _unrecorded_attributes = frozenset({"route_line"})
+
+    def _handle(self, sample: SignalSample) -> None:
+        text = value_as_string(sample.value)
+        self._attr_native_value = len(text) if text else None
+        self._attr_extra_state_attributes = {
+            "signal": self._signal_name,
+            "value_type": sample.value.WhichOneof("value"),
+        }
+        if text:
+            self._attr_extra_state_attributes["route_line"] = text
+
+    async def _async_restore_last(self) -> None:
+        """Restore nothing: the line isn't saved, so a length would describe
+        a route this entity can no longer show."""
+
+
+def _generic_sensor(
+    coordinator: TeslaTelemetryCoordinator, signal: str
+) -> GenericTelemetrySensor:
+    """The entity for a catalog-added signal."""
+    if signal == SIGNAL_ROUTE_LINE:
+        return RouteLineSensor(coordinator, signal)
+    return GenericTelemetrySensor(coordinator, signal)
 
 
 # ---------------------------------------------------------------------------
