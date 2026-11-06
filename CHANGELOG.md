@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.14.0...v0.15.0) (2026-11-06)
+
+
+### Features
+
+* keep the whole RouteLine on its own sensor ([#56](https://github.com/johnbr/ha-tesla-fleet-telemetry/issues/56)) ([729f3b1](https://github.com/johnbr/ha-tesla-fleet-telemetry/commit/729f3b1b9a514e24731acf1afb25027b0defad1b))
+
 ## [0.14.0](https://github.com/johnbr/ha-tesla-fleet-telemetry/compare/v0.13.0...v0.14.0) (2026-11-04)
 
 
