@@ -201,15 +201,19 @@ paste that same value into the `proxy_set_header` line above.
 
 ### 3. Install the integration
 
+The integration is in the HACS default store, so there is no custom repository
+to add.
+
 [![Open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=johnbr&repository=ha-tesla-fleet-telemetry&category=integration)
 
 1. In HACS, search for **Tesla Fleet Telemetry** and download it (or use the
    button above).
 2. Restart Home Assistant.
 
-If your HACS doesn't list it, add it as a custom repository first: HACS → ⋯ →
-**Custom repositories** → `https://github.com/johnbr/ha-tesla-fleet-telemetry`,
-type *Integration*, then continue from step 1.
+If your HACS doesn't list it yet (the default store can take a few hours to
+refresh), add it as a custom repository instead: HACS → ⋯ → **Custom
+repositories** → `https://github.com/johnbr/ha-tesla-fleet-telemetry`, type
+*Integration*, then continue from step 1.
 
 (Manual install: copy `custom_components/tesla_telemetry` into your Home
 Assistant `config/custom_components/` directory and restart.)
